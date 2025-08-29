@@ -7,6 +7,7 @@ encoding and delimiter detection.
 from __future__ import annotations
 
 import csv
+import codecs
 from pathlib import Path
 from typing import Iterable, Tuple
 
@@ -15,8 +16,9 @@ import pandas as pd
 
 DEFAULT_ENCODINGS: Iterable[str] = (
     "utf-8-sig",
-    "utf-16",
     "cp1251",
+    "utf-8",
+    "utf-16",
     "cp1252",
     "latin1",
 )
@@ -56,6 +58,9 @@ def smart_read_csv(
     sample = path.read_bytes()[:2048]
     last_err: Exception | None = None
     for enc in encodings:
+        if enc == "utf-8-sig" and not sample.startswith(codecs.BOM_UTF8):
+            # Skip UTF-8 with BOM if no BOM is present
+            continue
         try:
             snippet = sample.decode(enc)
         except UnicodeDecodeError as err:
@@ -81,9 +86,9 @@ def smart_read_csv(
                 except Exception as err:
                     last_err = err
                     continue
- 
+
                 if df.apply(lambda c: c.astype(str).str.strip() != "").any().any():
- 
+
                     return df, enc, sep
             continue
 
@@ -100,9 +105,8 @@ def smart_read_csv(
             last_err = err
             continue
 
-  
         if df.apply(lambda c: c.astype(str).str.strip() != "").any().any():
- 
+
             return df, enc, sep
     if last_err:
         raise last_err

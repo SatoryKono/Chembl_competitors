@@ -82,11 +82,20 @@ def normalize_name(name: str) -> Tuple[str, Dict[str, List[str]]]:
         return match.group(0)
 
     out = ISOTOPE_PATTERN.sub(isotope_repl, out)
-    out = re.sub(r"\(\s*\)", "", out)  # drop empty parentheses left by isotope removal
+    out = re.sub(
+        r"\(\s*\)",
+        "",
+        out,
+    )  # drop empty parentheses left by isotope removal
+    out = re.sub(
+        r"-\s*-",
+        "-",
+        out,
+    )  # collapse hyphens produced by isotope removal
 
     # Collapse extra whitespace and punctuation
     out = re.sub(r"\s+", " ", out)
-    out = out.strip().strip(",;")
+    out = out.strip().strip(",;-")
     return out, flags
 
 
