@@ -26,3 +26,17 @@ def test_fluorophore_and_noise_detection():
     assert "fitc" in flags["fluorophore"]
     assert "labeled" in flags["noise"]
     assert "jq1" in norm
+
+
+def test_isotope_hyphen_cleanup():
+    """Isotope tags should not leave stray hyphens in the name."""
+
+    name = "(+)-[3h]-3-ppp"
+    norm, flags = normalize_name(name)
+    assert norm == "(+)-3-ppp"
+    assert "3H" in flags["isotope"]
+
+    name2 = "[3h]-(+)-pentazocine"
+    norm2, flags2 = normalize_name(name2)
+    assert norm2 == "(+)-pentazocine"
+    assert "3H" in flags2["isotope"]
