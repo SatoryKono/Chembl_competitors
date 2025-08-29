@@ -11,8 +11,13 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python main.py --input examples.csv
+
+python main.py --input examples.csv --output normalized_competitor.csv
 ```
+
+If ``--output`` is omitted the normalised table is printed to ``stdout``.
+
+
 
 ## Development
 

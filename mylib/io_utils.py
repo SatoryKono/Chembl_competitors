@@ -81,7 +81,9 @@ def smart_read_csv(
                 except Exception as err:
                     last_err = err
                     continue
-                if (df.iloc[:, 0].astype(str).str.strip() != "").any():
+ 
+                if df.apply(lambda c: c.astype(str).str.strip() != "").any().any():
+ 
                     return df, enc, sep
             continue
 
@@ -98,7 +100,9 @@ def smart_read_csv(
             last_err = err
             continue
 
-        if (df.iloc[:, 0].astype(str).str.strip() != "").any():
+  
+        if df.apply(lambda c: c.astype(str).str.strip() != "").any().any():
+ 
             return df, enc, sep
     if last_err:
         raise last_err
