@@ -40,3 +40,31 @@ def test_isotope_hyphen_cleanup():
     norm2, flags2 = normalize_name(name2)
     assert norm2 == "(+)-pentazocine"
     assert "3H" in flags2["isotope"]
+
+
+def test_bracketed_isotope_block_removed():
+    """Bracketed segments containing isotopes should be stripped entirely."""
+
+    name = "[1,2-(n)3h]cortisone"
+    norm, flags = normalize_name(name)
+    assert norm == "cortisone"
+    assert "3H" in flags["isotope"]
+
+    name2 = "[1-14c]arachidonic acid"
+    norm2, flags2 = normalize_name(name2)
+    assert norm2 == "arachidonic acid"
+    assert "14C" in flags2["isotope"]
+
+
+def test_numeric_placeholder_and_mistyped_element():
+    """Numeric-only or mistyped element blocks map to iodine-125."""
+
+    name = "[125]bh cck-8"
+    norm, flags = normalize_name(name)
+    assert norm == "bh cck-8"
+    assert "125I" in flags["isotope"]
+
+    name2 = "[125l]orexin a"
+    norm2, flags2 = normalize_name(name2)
+    assert norm2 == "orexin a"
+    assert "125I" in flags2["isotope"]
