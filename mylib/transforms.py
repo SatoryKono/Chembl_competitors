@@ -21,8 +21,29 @@ ISOTOPE_ELEMENTS = {
 
 # Regular expression for stereochemistry descriptors like (4S,5R)
 RS_PATTERN = re.compile(r"\((?:\d+[RSrs](?:[,/-]\d+[RSrs])*)\)")
-# Regular expression for isotope notations such as [3H], (14C) or 125I-
-ISOTOPE_PATTERN = re.compile(r"\[?(\d{1,3})([A-Za-z]{1,2})\]?", re.IGNORECASE)
+# Bracketed blocks that may contain isotope tokens, e.g. [1-14C]
+BRACKET_BLOCK_RE = re.compile(r"\[([^\]]+)\]")
+# Generic isotope token matcher used both inside brackets and in free text
+ISOTOPE_TOKEN_RE = re.compile(r"(\d{1,3})([A-Za-z]{0,2})", re.IGNORECASE)
+
+
+def _normalise_element(elem: str) -> str:
+    """Normalise element symbols for isotope detection.
+
+    Parameters
+    ----------
+    elem:
+        Raw element symbol extracted from the name.
+
+    Returns
+    -------
+    str
+        Upper-cased element symbol with common typos corrected. ``L`` is
+        interpreted as iodine (``I``).
+    """
+
+    elem_up = elem.upper()
+    return "I" if elem_up == "L" else elem_up
 
 
 def normalize_name(name: str) -> Tuple[str, Dict[str, List[str]]]:
@@ -72,26 +93,39 @@ def normalize_name(name: str) -> Tuple[str, Dict[str, List[str]]]:
         flags["parenthetical"].extend(rs_matches)
         out = RS_PATTERN.sub("", out)
 
-    # Detect isotopes
+    # Strip bracketed blocks containing isotope labels
+    def _bracket_repl(match: re.Match[str]) -> str:
+        inner = match.group(1)
+        tokens = ISOTOPE_TOKEN_RE.findall(inner)
+        isotope_found = False
+        if len(tokens) == 1 and tokens[0][1] == "":
+            # Numeric-only placeholder such as [125]
+            mass, _ = tokens[0]
+            flags["isotope"].append(f"{mass}I")
+            isotope_found = True
+        else:
+            for mass, elem in tokens:
+                elem_up = _normalise_element(elem)
+                if elem_up and elem_up in ISOTOPE_ELEMENTS:
+                    flags["isotope"].append(f"{mass}{elem_up}")
+                    isotope_found = True
+        return "" if isotope_found else match.group(0)
+
+    out = BRACKET_BLOCK_RE.sub(_bracket_repl, out)
+
+    # Detect isotopes appearing outside brackets, e.g. 33P or 125I-
     def isotope_repl(match: re.Match[str]) -> str:
         mass, elem = match.groups()
-        elem_up = elem.upper()
+        elem_up = _normalise_element(elem)
         if elem_up in ISOTOPE_ELEMENTS:
             flags["isotope"].append(f"{mass}{elem_up}")
             return ""
         return match.group(0)
 
-    out = ISOTOPE_PATTERN.sub(isotope_repl, out)
-    out = re.sub(
-        r"\(\s*\)",
-        "",
-        out,
-    )  # drop empty parentheses left by isotope removal
-    out = re.sub(
-        r"-\s*-",
-        "-",
-        out,
-    )  # collapse hyphens produced by isotope removal
+    out = ISOTOPE_TOKEN_RE.sub(isotope_repl, out)
+    out = re.sub(r"\(\s*\)", "", out)  # drop empty parentheses
+    out = re.sub(r"\[\s*\]", "", out)  # drop empty brackets
+    out = re.sub(r"-\s*-", "-", out)  # collapse hyphens
 
     # Collapse extra whitespace and punctuation
     out = re.sub(r"\s+", " ", out)
