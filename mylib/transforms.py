@@ -172,18 +172,41 @@ def _unicode_normalize(text: str) -> str:
 
 
 def _fix_spacing(text: str) -> str:
-    """Normalize spacing around punctuation and decimals.
+    """Canonicalize spacing around common punctuation.
 
-    In addition to compacting spaces around ``-``, ``/``, ``:``, and ``+``,
-    this function also removes extraneous spaces surrounding commas and
-    periods. Decimal numbers such as ``1 . 5`` are collapsed to ``1.5``.
+    The transformations are applied sequentially to mirror the specification
+    in the user instructions. Only the listed punctuation characters are
+    affected; other in-line punctuation remains untouched.
     """
 
-    # Compact common connector characters
-    text = re.sub(r"\s*([-/:+,])\s*", r"\1", text)
-    # Remove spaces around periods, including decimal numbers
-    text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
-    text = re.sub(r"\s*\.\s*", ".", text)
+    # 0) Normalize various dash characters to a simple hyphen
+    text = re.sub(r"[\u2013\u2014\u2212]", "-", text)
+
+    # 1) Remove spaces before closing brackets and after opening brackets
+    text = re.sub(r"\s+([)\]\}])", r"\1", text)
+    text = re.sub(r"([(\[\{])\s+", r"\1", text)
+
+    # 2) Tighten connector punctuation
+    text = re.sub(r"\s*-\s*", "-", text)
+    text = re.sub(r"\s*/\s*", "/", text)
+    text = re.sub(r"\s*:\s*", ":", text)
+    text = re.sub(r"\s*\+\s*", "+", text)
+    text = re.sub(r"\s*;\s*", "; ", text)
+
+    # 3) Primes/apostrophes cling to adjacent tokens
+    text = re.sub(r"\s*(['\u2032])\s*", r"\1", text)
+
+    # 4) Commas: numeric enumerations keep tight format, lists get a space
+    text = re.sub(r"(?<=\d)\s*,\s*(?=\d)", ",", text)
+    text = re.sub(r"(?<!\d)\s*,\s*(?!\d)", ", ", text)
+    text = re.sub(r",\s+([)\]\}])", r",\1", text)
+
+    # 5) Remove space before trailing hyphens
+    text = re.sub(r"\s+-\b", "-", text)
+
+    # 6) Collapse repeated spaces and trim
+    text = re.sub(r"\s{2,}", " ", text).strip()
+
     return text
 
 
@@ -237,6 +260,9 @@ def _cleanup(text: str) -> str:
 
     # Remove errant spaces around connectors that may appear after token removal
     text = _fix_spacing(text)
+    # Fix decimals such as ``1 . 5`` -> ``1.5``
+    text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
+    text = re.sub(r"\s*\.\s*", ".", text)
     # Collapse multiple whitespace characters to single spaces
     text = re.sub(r"\s+", " ", text)
     # Re-run spacing fix in case the previous collapse introduced new gaps

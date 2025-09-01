@@ -9,7 +9,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pytest
 
-from mylib.transforms import PATTERNS, normalize_name
+from mylib.transforms import PATTERNS, normalize_name, _fix_spacing
 
 
 def test_isotope_flag() -> None:
@@ -81,7 +81,39 @@ def test_spacing_for_comma_and_decimal() -> None:
     """Spaces around commas and decimals are compacted."""
 
     res = normalize_name("N , N-dimethyl 1 . 5")
-    assert res["search_name"] == "n,n-dimethyl 1.5"
+    assert res["search_name"] == "n, n-dimethyl 1.5"
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("5 ' ; 1,3 -diol 1,2- (diol); 1,2- {", "5'; 1,3-diol 1,2-(diol); 1,2-{"),
+        ("poly Glu : Tyr", "poly Glu:Tyr"),
+        ("8 - oh dpat", "8-oh dpat"),
+        ("Na + Cl", "Na+Cl"),
+        ("1 ,2 )", "1,2)"),
+        ("[{ A } ]", "[{A}]"),
+        ("alpha ; beta ;gamma", "alpha; beta; gamma"),
+        ("1 ; 2 ; 3", "1; 2; 3"),
+        ("1 / 2 / 3", "1/2/3"),
+        ("A - B - C", "A-B-C"),
+        ("A : B : C", "A:B:C"),
+        ("A + B + C", "A+B+C"),
+        ("1, 2,3", "1,2,3"),
+        ("( A , B )", "(A, B)"),
+        ("5 'prime", "5'prime"),
+        ("word ′ prime", "word′prime"),
+        ("chloro -", "chloro-"),
+        ("1,2 -diol", "1,2-diol"),
+        ("A ;", "A;"),
+        ("(1 ,2 ;3 )", "(1,2; 3)"),
+        ("{ 1 , 2 }", "{1,2}"),
+    ],
+)
+def test_canonical_spacing_cases(raw: str, expected: str) -> None:
+    """Spacing normalization conforms to canonical punctuation rules."""
+
+    assert _fix_spacing(raw) == expected
 
 
 def test_salt_tokens_removed_and_logged() -> None:

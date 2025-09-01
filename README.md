@@ -5,9 +5,11 @@ This project provides utilities to preprocess and normalize chemical names in bu
 ## Installation
 
 
-During normalization the library compacts spacing around punctuation
-(`-`, `/`, `:`, `+`, commas, and decimals) so artifacts such as `8 - oh dpat`
-become `8-oh dpat`.
+During normalization the library canonicalizes spaces around punctuation so
+that artifacts such as `5 ' ; 1,3 -diol` become `5'; 1,3-diol`. Brackets lose
+padding, connectors (`-`, `/`, `:`, `+`) have no surrounding spaces, semicolons
+and commas carry a single space on the right, and primes cling to neighboring
+tokens.
 
 ```bash
 pip install -r requirements.txt
