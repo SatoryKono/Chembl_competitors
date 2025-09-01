@@ -50,7 +50,30 @@ def read_input_csv(
 
     path = Path(path)
     logger.debug("Reading input CSV from %s", path)
-    df = pd.read_csv(path, sep=sep, encoding=encoding)
+
+    try:
+        df = pd.read_csv(path, sep=sep, encoding=encoding)
+        # Heuristic: if the index is not a simple RangeIndex or extra columns
+        # appear, treat the file as malformed and trigger fallback parsing.
+        if not isinstance(df.index, pd.RangeIndex) or df.shape[1] != len(REQUIRED_COLUMNS):
+            raise pd.errors.ParserError("irregular column structure")
+    except pd.errors.ParserError as exc:
+        # If names contain unescaped delimiters, fall back to line-based parsing
+        logger.warning("Standard CSV parsing failed: %s", exc)
+        with Path(path).open(encoding=encoding) as handle:
+            lines = handle.read().splitlines()
+        if not lines:
+            msg = "Input file is empty"
+            logger.error(msg)
+            raise ValueError(msg) from exc
+        header = lines[0].strip()
+        if header.lower() != "input_name":
+            msg = "Missing required column 'input_name' in header"
+            logger.error(msg)
+            raise ValueError(msg) from exc
+        df = pd.DataFrame({"input_name": [line.strip() for line in lines[1:]]})
+
+
     missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         msg = f"Missing required columns: {missing}"
