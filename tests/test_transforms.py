@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
 import pytest
 
 from mylib.transforms import normalize_name
@@ -29,6 +30,19 @@ def test_sequence_detection() -> None:
     res = normalize_name("Ala-Gly-Ser")
     assert res["category"] == "peptide"
     assert res["peptide_info"]["type"] == "sequence_like"
+
+
+
+
+
+def test_protective_group_sequence() -> None:
+    """Sequences with protective termini are still classified as peptides."""
+
+    res = normalize_name("H-Ala-Gly-OH")
+    assert res["category"] == "peptide"
+    assert res["peptide_info"]["type"] == "sequence_like"
+
+
 
 
 def test_noise_and_concentration_removal() -> None:
@@ -67,6 +81,20 @@ def test_spacing_compaction_after_flag_removal(connector: str) -> None:
 def test_repeated_connector_collapses() -> None:
     res = normalize_name("a - biotin - b")
     assert res["search_name"] == "a-b"
+
+
+
+
+
+def test_spacing_for_comma_and_decimal() -> None:
+    """Spaces around commas and decimals are compacted."""
+
+    res = normalize_name("N , N-dimethyl 1 . 5")
+    assert res["search_name"] == "n,n-dimethyl 1.5"
+
+
+
+
 
 
 def test_salt_tokens_removed_and_logged() -> None:
@@ -160,3 +188,24 @@ def test_expanded_fluorophore_tokens(text: str, expected: str, token: str) -> No
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("fluorophore") == [token]
+
+
+
+@pytest.mark.parametrize(
+    "text, composition",
+    [
+        ("poly-Glu:Tyr", "glu:tyr"),
+        ("poly (Glu, Tyr)", "glu:tyr"),
+        ("poly Glu Tyr", "glu:tyr"),
+    ],
+)
+def test_poly_peptide_detection(text: str, composition: str) -> None:
+    res = normalize_name(text)
+    assert res["category"] == "peptide"
+    assert res["peptide_info"] == {"type": "polymer", "composition": composition}
+
+
+def test_polymer_non_peptide() -> None:
+    res = normalize_name("polymer support resin")
+    assert res["category"] == "small_molecule"
+

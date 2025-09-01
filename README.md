@@ -4,6 +4,17 @@ This project provides utilities to preprocess and normalize chemical names in bu
 
 ## Installation
 
+
+
+
+
+
+During normalization the library compacts spacing around punctuation
+(`-`, `/`, `:`, `+`, commas, and decimals) so artifacts such as `8 - oh dpat`
+become `8-oh dpat`.
+
+
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -27,6 +38,8 @@ python main.py --input examples1.csv --output out.csv
 - `--sep`: CSV delimiter (default `,`).
 - `--encoding`: file encoding (default `utf-8`).
 - `--log-level`: logging level.
+
+
 
 If the input file contains unescaped commas within chemical names, the loader
 falls back to a line-by-line parser. Ensure the first line is the header
@@ -97,6 +110,20 @@ Fluorophore labels such as **Alexa Fluor**, **HiLyte Fluor**, **DyLight**,
 **CF** dye series, **Janelia Fluor**, or **BODIPY** families are stripped
 early in the pipeline and logged under `flags.fluorophore` so that base
 chemical names remain intact.
+
+
+
+Peptides are detected via several heuristics: polymer-style prefixes like
+`poly-Glu:Tyr`, explicit terms such as `peptide` or `polypeptide`, and
+sequences of one- or three-letter amino-acid codes (optionally bearing
+protective groups like `H-`, `Ac-`, `Boc-`, `-OH`, or `-NH2`). When detected,
+the output sets `category = peptide` and populates `peptide_info` with the
+peptide type and, for polymer forms, the normalized composition. Generic
+materials like "polymer support resin" are not misclassified as peptides
+because amino-acid signatures are required.
+
+
+
 
 ## License
 
