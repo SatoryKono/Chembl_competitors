@@ -70,7 +70,7 @@ def _unicode_normalize(text: str) -> str:
 def _fix_spacing(text: str) -> str:
     """Remove spaces around punctuation like '-', '/', ':', '+'."""
 
-    return re.sub(r"\s*([-/:+])\s*", r"\1", text)
+    return re.sub(r"\s*([-/:+;\,])\s*", r"\1", text)
 
 
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
