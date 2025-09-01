@@ -63,13 +63,17 @@ Output includes columns:
 - `peptide_info`
 - `flags`
 - `removed_tokens_flat`
+
 - `status`
+
 - `flag_isotope`
 - `flag_fluorophore`
 - `flag_biotin`
 - `flag_salt`
 - `flag_hydrate`
+
 - `flag_empty_after_clean`
+
 
 Isotopic labels such as `[3H]`, `14C`, `d5`, or `U-13C` are removed from the
 normalized name and logged under `flags.isotope`.
@@ -85,10 +89,12 @@ purity annotations (e.g., `≥95% purity`) are stripped in two passes—first wi
 parentheses/brackets and then globally—with the removed terms collected under
 `flags.noise`.
 
+
 If aggressive cleaning removes all content from a name, the pipeline falls back
 to a minimally cleaned version of the original text. In such cases the output
 includes `status = empty_after_clean` and sets the boolean indicator
 `flag_empty_after_clean` to `True` so these rows can be reviewed manually.
+
 
 `search_name` always matches `normalized_name` unless a documented override
 occurs. The reason for any override is recorded in `search_override_reason`.

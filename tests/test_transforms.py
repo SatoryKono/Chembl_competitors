@@ -56,6 +56,7 @@ def test_empty_after_clean_status_flag() -> None:
     assert res["search_name"] == "solution 10 mm"
 
 
+
 @pytest.mark.parametrize("connector", ["-", "/", "+", ":"])
 def test_spacing_compaction_after_flag_removal(connector: str) -> None:
     """Removal of flagged tokens should not leave spaces around connectors."""
