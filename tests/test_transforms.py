@@ -37,6 +37,15 @@ def test_noise_and_concentration_removal() -> None:
     assert res["search_name"] == "sample"
 
 
+def test_parenthetical_noise_two_pass() -> None:
+    res = normalize_name("histamine (solution, 10 mM in PBS)")
+    noise_flags = res["flags"].get("noise", [])
+    assert res["search_name"] == "histamine"
+    assert "solution" in noise_flags
+    assert "PBS" in noise_flags
+    assert any("10 mM" in t for t in noise_flags)
+
+
 @pytest.mark.parametrize("connector", ["-", "/", "+", ":"])
 def test_spacing_compaction_after_flag_removal(connector: str) -> None:
     """Removal of flagged tokens should not leave spaces around connectors."""
@@ -99,6 +108,14 @@ def test_removed_tokens_flat_empty() -> None:
     assert res["removed_tokens_flat"] == ""
 
 
+def test_search_name_defaults_to_normalized() -> None:
+    """search_name should equal normalized_name when no override reason."""
+
+    res = normalize_name("Histamine")
+    assert res["search_name"] == res["normalized_name"]
+    assert res["search_override_reason"] == ""
+
+
 @pytest.mark.parametrize(
     "text, expected, tokens",
     [
@@ -114,3 +131,22 @@ def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("isotope") == tokens
+
+
+@pytest.mark.parametrize(
+    "text, expected, token",
+    [
+        ("poly-Glu:Tyr Alexa Fluor 488", "poly-glu:tyr", "Alexa Fluor 488"),
+        ("HiLyte Fluor 555 peptide", "peptide", "HiLyte Fluor 555"),
+        ("DyLight-650 antibody", "antibody", "DyLight-650"),
+        ("peptide CF568", "peptide", "CF568"),
+        ("Janelia Fluor 549 ligand", "ligand", "Janelia Fluor 549"),
+        ("BODIPY-581/591 conjugate", "conjugate", "BODIPY-581/591"),
+    ],
+)
+def test_expanded_fluorophore_tokens(text: str, expected: str, token: str) -> None:
+    """Expanded fluorophore patterns are removed prior to other processing."""
+
+    res = normalize_name(text)
+    assert res["search_name"] == expected
+    assert res["flags"].get("fluorophore") == [token]

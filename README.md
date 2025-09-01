@@ -58,6 +58,7 @@ biotinylated peptide
 Output includes columns:
 - `normalized_name`
 - `search_name`
+- `search_override_reason`
 - `category`
 - `peptide_info`
 - `flags`
@@ -75,6 +76,20 @@ Salts and mineral acids such as hydrochloride, HCl, HBr, HNO3 or H2SO4 are
 removed from the normalized name and logged under `flags.salt`. Flattened
 tokens are also provided in `removed_tokens_flat` using a
 `<flag>:<token>|<flag>:<token>` format.
+
+Non-structural descriptors like `solution`, `soln`, `stock`, `buffer`,
+`USP/EP/ACS`, `reagent`, `analytical grade`, `crystalline`, `powder`, or
+purity annotations (e.g., `≥95% purity`) are stripped in two passes—first within
+parentheses/brackets and then globally—with the removed terms collected under
+`flags.noise`.
+
+`search_name` always matches `normalized_name` unless a documented override
+occurs. The reason for any override is recorded in `search_override_reason`.
+
+Fluorophore labels such as **Alexa Fluor**, **HiLyte Fluor**, **DyLight**,
+**CF** dye series, **Janelia Fluor**, or **BODIPY** families are stripped
+early in the pipeline and logged under `flags.fluorophore` so that base
+chemical names remain intact.
 
 ## License
 
