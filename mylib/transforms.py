@@ -77,6 +77,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         r"|tritiated|deuterated"                   # descriptive words
         r")(?!\w)",
         re.IGNORECASE,
+
     ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
     "salt": re.compile(
@@ -143,7 +144,6 @@ AA3 = {
 }
 
 
-
 def _flatten_flags(flags: Dict[str, List[str]]) -> str:
     """Flatten selected flag tokens into a pipe-delimited string."""
 
@@ -176,20 +176,41 @@ def _unicode_normalize(text: str) -> str:
 
 
 def _fix_spacing(text: str) -> str:
+    """Canonicalize spacing around common punctuation.
 
-
-    """Normalize spacing around punctuation and decimals.
-
-    In addition to compacting spaces around ``-``, ``/``, ``:``, and ``+``,
-    this function also removes extraneous spaces surrounding commas and
-    periods. Decimal numbers such as ``1 . 5`` are collapsed to ``1.5``.
+    The transformations are applied sequentially to mirror the specification
+    in the user instructions. Only the listed punctuation characters are
+    affected; other in-line punctuation remains untouched.
     """
 
-    # Compact common connector characters
-    text = re.sub(r"\s*([-/:+,])\s*", r"\1", text)
-    # Remove spaces around periods, including decimal numbers
-    text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
-    text = re.sub(r"\s*\.\s*", ".", text)
+    # 0) Normalize various dash characters to a simple hyphen
+    text = re.sub(r"[\u2013\u2014\u2212]", "-", text)
+
+    # 1) Remove spaces before closing brackets and after opening brackets
+    text = re.sub(r"\s+([)\]\}])", r"\1", text)
+    text = re.sub(r"([(\[\{])\s+", r"\1", text)
+
+    # 2) Tighten connector punctuation
+    text = re.sub(r"\s*-\s*", "-", text)
+    text = re.sub(r"\s*/\s*", "/", text)
+    text = re.sub(r"\s*:\s*", ":", text)
+    text = re.sub(r"\s*\+\s*", "+", text)
+    text = re.sub(r"\s*;\s*", "; ", text)
+
+    # 3) Primes/apostrophes cling to adjacent tokens
+    text = re.sub(r"\s*(['\u2032])\s*", r"\1", text)
+
+    # 4) Commas: numeric enumerations keep tight format, lists get a space
+    text = re.sub(r"(?<=\d)\s*,\s*(?=\d)", ",", text)
+    text = re.sub(r"(?<!\d)\s*,\s*(?!\d)", ", ", text)
+    text = re.sub(r",\s+([)\]\}])", r",\1", text)
+
+    # 5) Remove space before trailing hyphens
+    text = re.sub(r"\s+-\b", "-", text)
+
+    # 6) Collapse repeated spaces and trim
+    text = re.sub(r"\s{2,}", " ", text).strip()
+
     return text
 
 
@@ -210,6 +231,7 @@ def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
 
 
 
+
 def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
     pattern = re.compile(r"(\([^)]*\)|\[[^]]*\])")
     matches = pattern.findall(text)
@@ -217,6 +239,7 @@ def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
         flags.setdefault("parenthetical", []).extend(matches)
         text = pattern.sub(" ", text)
     return text
+
 
 
 
@@ -259,6 +282,11 @@ def _cleanup(text: str) -> str:
 
     # Remove errant spaces around connectors that may appear after token removal
     text = _fix_spacing(text)
+
+    # Fix decimals such as ``1 . 5`` -> ``1.5``
+    text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
+    text = re.sub(r"\s*\.\s*", ".", text)
+
     # Collapse multiple whitespace characters to single spaces
     text = re.sub(r"\s+", " ", text)
     # Re-run spacing fix in case the previous collapse introduced new gaps
@@ -275,8 +303,6 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     """Detect peptide-like strings and return category and info."""
 
     lowered = text.lower()
-
-
 
 
     # polymer-style notation: poly-Glu:Tyr, poly (Glu, Tyr), poly Glu Tyr
@@ -345,12 +371,8 @@ def normalize_name(name: str) -> Dict[str, object]:
         text = _detect_and_remove(text, key, flags)
     text = _remove_noise_descriptors(text, flags)
 
-
-
     text = _cleanup(text)
     category, peptide_info = _detect_peptide(text)
-
-
 
     status = ""
     flag_empty_after_clean = False
@@ -358,14 +380,8 @@ def normalize_name(name: str) -> Dict[str, object]:
         # Fall back to the base-clean string and ensure it is fully cleaned
         text = _cleanup(base_clean)
         if not text:
-
-
-
             # As a last resort, minimally normalize the original text
             text = _cleanup(_unicode_normalize(name))
-
-
-
 
         status = "empty_after_clean"
         flag_empty_after_clean = True
@@ -381,6 +397,7 @@ def normalize_name(name: str) -> Dict[str, object]:
 
     search_name = normalized_name
     removed_tokens_flat = _flatten_flags(flags)
+
 
 
     result = {

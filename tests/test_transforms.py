@@ -10,7 +10,8 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pytest
 
-from mylib.transforms import normalize_name
+from mylib.transforms import PATTERNS, normalize_name, _fix_spacing
+
 
 
 def test_isotope_flag() -> None:
@@ -32,16 +33,12 @@ def test_sequence_detection() -> None:
     assert res["peptide_info"]["type"] == "sequence_like"
 
 
-
-
-
 def test_protective_group_sequence() -> None:
     """Sequences with protective termini are still classified as peptides."""
 
     res = normalize_name("H-Ala-Gly-OH")
     assert res["category"] == "peptide"
     assert res["peptide_info"]["type"] == "sequence_like"
-
 
 
 
@@ -84,16 +81,44 @@ def test_repeated_connector_collapses() -> None:
 
 
 
-
-
 def test_spacing_for_comma_and_decimal() -> None:
     """Spaces around commas and decimals are compacted."""
 
     res = normalize_name("N , N-dimethyl 1 . 5")
-    assert res["search_name"] == "n,n-dimethyl 1.5"
+
+    assert res["search_name"] == "n, n-dimethyl 1.5"
 
 
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("5 ' ; 1,3 -diol 1,2- (diol); 1,2- {", "5'; 1,3-diol 1,2-(diol); 1,2-{"),
+        ("poly Glu : Tyr", "poly Glu:Tyr"),
+        ("8 - oh dpat", "8-oh dpat"),
+        ("Na + Cl", "Na+Cl"),
+        ("1 ,2 )", "1,2)"),
+        ("[{ A } ]", "[{A}]"),
+        ("alpha ; beta ;gamma", "alpha; beta; gamma"),
+        ("1 ; 2 ; 3", "1; 2; 3"),
+        ("1 / 2 / 3", "1/2/3"),
+        ("A - B - C", "A-B-C"),
+        ("A : B : C", "A:B:C"),
+        ("A + B + C", "A+B+C"),
+        ("1, 2,3", "1,2,3"),
+        ("( A , B )", "(A, B)"),
+        ("5 'prime", "5'prime"),
+        ("word ′ prime", "word′prime"),
+        ("chloro -", "chloro-"),
+        ("1,2 -diol", "1,2-diol"),
+        ("A ;", "A;"),
+        ("(1 ,2 ;3 )", "(1,2; 3)"),
+        ("{ 1 , 2 }", "{1,2}"),
+    ],
+)
+def test_canonical_spacing_cases(raw: str, expected: str) -> None:
+    """Spacing normalization conforms to canonical punctuation rules."""
 
+    assert _fix_spacing(raw) == expected
 
 
 
@@ -161,6 +186,24 @@ def test_search_name_defaults_to_normalized() -> None:
         ("d5-amphetamine", "amphetamine", ["d5"]),
         ("U-13C glucose", "glucose", ["U-13C"]),
         ("d5 [3H] amphetamine", "amphetamine", ["d5", "[3H]"]),
+
+        ("14C caffeine", "caffeine", ["14C"]),
+        ("[14C]caffeine", "caffeine", ["[14C]"]),
+        ("125I-insulin", "insulin", ["125I"]),
+        ("[125 I] insulin", "insulin", ["[125 I]"]),
+        ("18F-FDG", "fdg", ["18F"]),
+        ("[18F]fluorodeoxyglucose", "fluorodeoxyglucose", ["[18F]"]),
+        ("2H water", "water", ["2H"]),
+        ("D-amphetamine", "amphetamine", ["D"]),
+        ("T-thymidine", "thymidine", ["T"]),
+        ("deuterated ethanol", "ethanol", ["deuterated"]),
+        ("tritiated thymidine", "thymidine", ["tritiated"]),
+        ("d3-deuterated phenol", "phenol", ["d3", "deuterated"]),
+        ("[3H][14C] compound", "compound", ["[3H]", "[14C]"]),
+        ("d5-125I-amphetamine", "amphetamine", ["d5", "125I"]),
+        ("U13C-15N-lysine", "lysine", ["U13C", "15N"]),
+        ("d5 U-13C [3H] sample", "sample", ["d5", "U-13C", "[3H]"]),
+
     ],
 )
 def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
@@ -169,6 +212,7 @@ def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("isotope") == tokens
+
 
 
 @pytest.mark.parametrize(
@@ -188,7 +232,6 @@ def test_expanded_fluorophore_tokens(text: str, expected: str, token: str) -> No
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("fluorophore") == [token]
-
 
 
 @pytest.mark.parametrize(
