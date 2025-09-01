@@ -46,6 +46,17 @@ def test_parenthetical_noise_two_pass() -> None:
     assert any("10 mM" in t for t in noise_flags)
 
 
+def test_empty_after_clean_status_flag() -> None:
+    """Names that empty out after cleaning fallback and set status."""
+
+    res = normalize_name("solution 10 mM")
+    assert res["status"] == "empty_after_clean"
+    assert res["flag_empty_after_clean"] is True
+    assert res["normalized_name"] == "solution 10 mm"
+    assert res["search_name"] == "solution 10 mm"
+
+
+
 @pytest.mark.parametrize("connector", ["-", "/", "+", ":"])
 def test_spacing_compaction_after_flag_removal(connector: str) -> None:
     """Removal of flagged tokens should not leave spaces around connectors."""
