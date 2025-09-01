@@ -1,0 +1,35 @@
+"""Unit tests for normalization utilities."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from mylib.transforms import normalize_name
+
+
+def test_isotope_flag() -> None:
+    res = normalize_name("[3H] 8 - oh dpat")
+    assert res["flag_isotope"] is True
+    assert res["search_name"] == "8-oh dpat"
+
+
+def test_biotin_and_peptide() -> None:
+    res = normalize_name("biotinylated peptide")
+    assert res["flag_biotin"] is True
+    assert res["category"] == "peptide"
+    assert res["search_name"] == "peptide"
+
+
+def test_sequence_detection() -> None:
+    res = normalize_name("Ala-Gly-Ser")
+    assert res["category"] == "peptide"
+    assert res["peptide_info"]["type"] == "sequence_like"
+
+
+def test_noise_and_concentration_removal() -> None:
+    res = normalize_name("Sample solution 10 mM")
+    assert "solution" in res["flags"].get("noise", [])
+    assert res["search_name"] == "sample"

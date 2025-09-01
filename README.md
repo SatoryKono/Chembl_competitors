@@ -1,0 +1,72 @@
+# Chemical Name Normalizer
+
+This project provides utilities to preprocess and normalize chemical names in bulk.
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+Optional quality tools:
+
+```bash
+pip install black ruff mypy pytest
+```
+
+## Usage
+
+```bash
+python main.py --input examples1.csv --output out.csv
+```
+
+### Arguments
+
+- `--input`: path to input CSV containing an `input_name` column.
+- `--output`: path for the output CSV.
+- `--sep`: CSV delimiter (default `,`).
+- `--encoding`: file encoding (default `utf-8`).
+- `--log-level`: logging level.
+
+If the input file contains unescaped commas within chemical names, the loader
+falls back to a line-by-line parser. Ensure the first line is the header
+`input_name` and each subsequent line contains a single name.
+
+## Development
+
+Recommended commands:
+
+```bash
+black .
+ruff check .
+mypy .
+pytest
+```
+
+## Testing
+
+Unit tests live under `tests/` and can be run with `pytest`.
+
+## Example
+
+Input:
+```
+[3H] 8 - oh dpat
+biotinylated peptide
+```
+
+Output includes columns:
+- `normalized_name`
+- `search_name`
+- `category`
+- `peptide_info`
+- `flags`
+- `flag_isotope`
+- `flag_fluorophore`
+- `flag_biotin`
+- `flag_salt`
+- `flag_hydrate`
+
+## License
+
+MIT
