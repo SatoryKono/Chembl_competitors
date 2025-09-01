@@ -1,116 +1,112 @@
-"""Utility functions for input/output operations.
+"""Input/output helpers for chemical normalization.
 
-This module provides helper routines to load CSV files with automatic
-encoding and delimiter detection.
+This module provides convenience wrappers around pandas CSV readers and
+writers with additional validation.
 """
 
 from __future__ import annotations
 
-import csv
-import codecs
+import logging
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Any
 
 import pandas as pd
 
-
-DEFAULT_ENCODINGS: Iterable[str] = (
-    "utf-8-sig",
-    "cp1251",
-    "utf-8",
-    "utf-16",
-    "cp1252",
-    "latin1",
-)
-DEFAULT_DELIMITERS: Iterable[str] = (",", ";", "\t", "|")
-NA_VALUES = {"", "na", "n/a", "none", "null"}
+logger = logging.getLogger(__name__)
 
 
-def smart_read_csv(
+REQUIRED_COLUMNS = ["input_name"]
+
+
+def read_input_csv(
     path: str | Path,
-    encodings: Iterable[str] = DEFAULT_ENCODINGS,
-    seps: Iterable[str] = DEFAULT_DELIMITERS,
-) -> Tuple[pd.DataFrame, str, str]:
-    """Read a CSV file trying multiple encodings and delimiters.
+    *,
+    sep: str = ",",
+    encoding: str = "utf-8",
+) -> pd.DataFrame:
+    """Load input CSV and validate required columns.
 
     Parameters
     ----------
     path:
-        Path to the CSV file on disk.
-    encodings:
-        Candidate text encodings to try. The first successful one is used.
-    seps:
-        Candidate field delimiters.
+        Path to the input CSV file.
+    sep:
+        Field separator used in the CSV.
+    encoding:
+        Encoding of the CSV file.
 
     Returns
     -------
-    tuple
-        DataFrame along with the encoding and delimiter that succeeded.
+    pandas.DataFrame
+        DataFrame containing at least the required columns.
 
     Raises
     ------
-    UnicodeDecodeError
-        If none of the encodings can decode the sample.
+    FileNotFoundError
+        If the file does not exist.
     ValueError
-        If the file cannot be parsed as CSV with any of the tested combinations.
+        If required columns are missing.
     """
+
     path = Path(path)
-    sample = path.read_bytes()[:2048]
-    last_err: Exception | None = None
-    for enc in encodings:
-        if enc == "utf-8-sig" and not sample.startswith(codecs.BOM_UTF8):
-            # Skip UTF-8 with BOM if no BOM is present
-            continue
-        try:
-            snippet = sample.decode(enc)
-        except UnicodeDecodeError as err:
-            last_err = err
-            continue
+    logger.debug("Reading input CSV from %s", path)
+    try:
+        df = pd.read_csv(path, sep=sep, encoding=encoding)
+        # Heuristic: if the index is not a simple RangeIndex or extra columns
+        # appear, treat the file as malformed and trigger fallback parsing.
+        if not isinstance(df.index, pd.RangeIndex) or df.shape[1] != len(REQUIRED_COLUMNS):
+            raise pd.errors.ParserError("irregular column structure")
+    except pd.errors.ParserError as exc:
+        # If names contain unescaped delimiters, fall back to line-based parsing
+        logger.warning("Standard CSV parsing failed: %s", exc)
+        with Path(path).open(encoding=encoding) as handle:
+            lines = handle.read().splitlines()
+        if not lines:
+            msg = "Input file is empty"
+            logger.error(msg)
+            raise ValueError(msg) from exc
+        header = lines[0].strip()
+        if header.lower() != "input_name":
+            msg = "Missing required column 'input_name' in header"
+            logger.error(msg)
+            raise ValueError(msg) from exc
+        df = pd.DataFrame({"input_name": [line.strip() for line in lines[1:]]})
 
-        # Use csv.Sniffer to guess the delimiter on the decoded sample
-        try:
-            dialect = csv.Sniffer().sniff(snippet, delimiters="".join(seps))
-            sep = dialect.delimiter
-        except Exception:
-            # Fallback to testing all delimiters if sniffing fails
-            for sep in seps:
-                try:
-                    df = pd.read_csv(  # type: ignore[call-overload]
-                        path,
-                        dtype=str,
-                        encoding=enc,
-                        sep=sep,
-                        na_values=NA_VALUES,
-                        keep_default_na=False,
-                    ).fillna("")
-                except Exception as err:
-                    last_err = err
-                    continue
-
-                if df.apply(lambda c: c.astype(str).str.strip() != "").any().any():
-
-                    return df, enc, sep
-            continue
-
-        try:
-            df = pd.read_csv(  # type: ignore[call-overload]
-                path,
-                dtype=str,
-                encoding=enc,
-                sep=sep,
-                na_values=NA_VALUES,
-                keep_default_na=False,
-            ).fillna("")
-        except Exception as err:
-            last_err = err
-            continue
-
-        if df.apply(lambda c: c.astype(str).str.strip() != "").any().any():
-
-            return df, enc, sep
-    if last_err:
-        raise last_err
-    raise ValueError(f"Failed to parse CSV file: {path}")
+    missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+    if missing:
+        msg = f"Missing required columns: {missing}"
+        logger.error(msg)
+        raise ValueError(msg)
+    return df
 
 
-__all__ = ["smart_read_csv"]
+def write_output_csv(
+    df: pd.DataFrame,
+    path: str | Path,
+    *,
+    sep: str = ",",
+    encoding: str = "utf-8",
+    index: bool = False,
+    **to_csv_kwargs: Any,
+) -> None:
+    """Write DataFrame to CSV.
+
+    Parameters
+    ----------
+    df:
+        DataFrame to save.
+    path:
+        Destination file path.
+    sep:
+        Field separator.
+    encoding:
+        Text encoding for the output file.
+    index:
+        Whether to write DataFrame index.
+    to_csv_kwargs:
+        Additional keyword arguments forwarded to :meth:`pandas.DataFrame.to_csv`.
+    """
+
+    path = Path(path)
+    logger.debug("Writing output CSV to %s", path)
+    df.to_csv(path, sep=sep, encoding=encoding, index=index, **to_csv_kwargs)

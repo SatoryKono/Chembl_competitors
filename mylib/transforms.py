@@ -1,136 +1,313 @@
-"""Name normalisation utilities for chemical compounds."""
+"""Text normalization utilities for chemical names."""
 
 from __future__ import annotations
 
+import logging
 import re
+import unicodedata
 from typing import Dict, List, Tuple
 
-# Known isotopic element symbols. Using uppercase for comparison
-ISOTOPE_ELEMENTS = {
-    "H",
-    "C",
-    "N",
-    "O",
-    "P",
-    "S",
-    "I",
-    "F",
-    "CL",
-    "BR",
+logger = logging.getLogger(__name__)
+
+# Tokens representing salts and mineral acids to strip early in processing
+SALT_TOKENS = [
+    "hydrochloride",
+    "phosphate",
+    "mesylate",
+    "citrate",
+    "tartrate",
+    "acetate",
+    "sulfate",
+    "nitrate",
+    "maleate",
+    "fumarate",
+    "oxalate",
+    "sodium",
+    "potassium",
+    "calcium",
+    "lithium",
+    "HCl",
+    "HBr",
+    "HNO3",
+    "H2SO4",
+]
+
+# Tokens representing hydrate forms and related descriptors
+HYDRATE_TOKENS = [
+    "monohydrate",
+    "dihydrate",
+    "trihydrate",
+    "tetrahydrate",
+    "pentahydrate",
+    "hydrate",
+    "anhydrous",
+]
+
+# Regex patterns for various flags
+PATTERNS: Dict[str, re.Pattern[str]] = {
+    "fluorophore": re.compile(
+        r"""
+        \b(
+            FITC|
+            Alexa(?:\s|-)?Fluor[\s-]?\d+|
+            HiLyte(?:\s|-)?(?:Fluor)?[\s-]?\d+|
+            DyLight[\s-]?\d+|
+            CF[\s-]?\d+|
+            Janelia(?:\s|-)?Fluor[\s-]?\d+|
+            BODIPY(?:[-/][A-Za-z0-9/]+|\s(?:[A-Za-z]{1,3}|[0-9/]+)){0,2}|
+            Cy\d+|
+            Rhodamine|
+            TRITC|
+            DAPI|
+            Texas\sRed|
+            PE|
+            PerCP|
+            APC
+        )\b
+        """,
+        re.IGNORECASE | re.VERBOSE,
+    ),
+    "isotope": re.compile(
+        r"(?<!\w)(?:"
+        r"\[(?:3H|14C|13C|15N|2H|125I|18F)\]"  # bracketed isotopes
+        r"|(?:3H|14C|13C|15N|2H|125I|18F|D|T)"    # bare prefixes and single letters
+        r"|d\d+"                                  # deuteration like d5
+        r"|U-?13C"                                 # uniform 13C labeling
+        r"|tritiated|deuterated"                   # descriptive words
+        r")(?!\w)",
+        re.IGNORECASE,
+    ),
+    "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
+    "salt": re.compile(
+        r"\b(" + "|".join(map(re.escape, SALT_TOKENS)) + r")\b",
+        re.IGNORECASE,
+    ),
+    "hydrate": re.compile(
+        r"\b(" + "|".join(map(re.escape, HYDRATE_TOKENS)) + r")\b",
+        re.IGNORECASE,
+    ),
 }
 
-# Regular expression for stereochemistry descriptors like (4S,5R)
-RS_PATTERN = re.compile(r"\((?:\d+[RSrs](?:[,/-]\d+[RSrs])*)\)")
-# Bracketed blocks that may contain isotope tokens, e.g. [1-14C]
-BRACKET_BLOCK_RE = re.compile(r"\[([^\]]+)\]")
-# Generic isotope token matcher used both inside brackets and in free text
-ISOTOPE_TOKEN_RE = re.compile(r"(\d{1,3})([A-Za-z]{0,2})", re.IGNORECASE)
+# Non-structural descriptor tokens to remove in two passes
+NOISE_WORDS = [
+    "solution",
+    "soln",
+    "aqueous",
+    r"aq\.",
+    "stock",
+    "buffer",
+    "USP",
+    "EP",
+    "ACS",
+    "reagent",
+    "analytical",
+    "grade",
+    "crystal(?:line)?",
+    "powder",
+    "PBS",
+]
+NOISE_WITH_ID = r"(?:lot|cat(?:alog)?|code|ref)[\s:_-]*\w+"
+PURITY_PATTERN = r"≥?\s*\d{1,2}\s*%?\s*purity"
+NOISE_REGEX = re.compile(
+    rf"{NOISE_WITH_ID}|\b(?:{'|'.join(NOISE_WORDS)})\b|{PURITY_PATTERN}",
+    re.IGNORECASE,
+)
+
+STOPWORDS = {"in", "of", "and"}
+
+AA1 = set("ACDEFGHIKLMNPQRSTVWY")
+AA3 = {
+    "Ala",
+    "Cys",
+    "Asp",
+    "Glu",
+    "Phe",
+    "Gly",
+    "His",
+    "Ile",
+    "Lys",
+    "Leu",
+    "Met",
+    "Asn",
+    "Pro",
+    "Gln",
+    "Arg",
+    "Ser",
+    "Thr",
+    "Val",
+    "Trp",
+    "Tyr",
+}
 
 
-def _normalise_element(elem: str) -> str:
-    """Normalise element symbols for isotope detection.
+def _flatten_flags(flags: Dict[str, List[str]]) -> str:
+    """Flatten selected flag tokens into a pipe-delimited string."""
 
-    Parameters
-    ----------
-    elem:
-        Raw element symbol extracted from the name.
+    order = [
+        "fluorophore",
+        "isotope",
+        "biotin",
+        "salt",
+        "hydrate",
+        "noise",
+        "parenthetical",
+    ]
+    parts: List[str] = []
+    for key in order:
+        for token in flags.get(key, []):
+            parts.append(f"{key}:{token}")
+    return "|".join(parts)
 
-    Returns
-    -------
-    str
-        Upper-cased element symbol with common typos corrected. ``L`` is
-        interpreted as iodine (``I``).
-    """
 
-    elem_up = elem.upper()
-    return "I" if elem_up == "L" else elem_up
+def _unicode_normalize(text: str) -> str:
+    """Apply Unicode normalization and basic whitespace fixes."""
+
+    text = unicodedata.normalize("NFKC", text)
+    text = text.replace("µ", "u")
+    # Remove NBSP and zero-width spaces
+    text = re.sub(r"[\u00A0\u200B\u200C\u200D\uFEFF]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
-def normalize_name(name: str) -> Tuple[str, Dict[str, List[str]]]:
-    """Normalise a compound name and capture annotation flags.
+def _fix_spacing(text: str) -> str:
+    """Remove spaces around punctuation like '-', '/', ':', '+'."""
+
+    return re.sub(r"\s*([-/:+])\s*", r"\1", text)
+
+
+def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
+    pattern = re.compile(
+        r"\b\d+(?:\.\d+)?\s*(?:mM|M|uM|µM|nM|pM|%|mg/mL|mg\/mL|g/mL|mg|g|mL)\b",
+        re.IGNORECASE,
+    )
+    matches = pattern.findall(text)
+    if matches:
+        flags.setdefault("noise", []).extend(matches)
+        text = pattern.sub(" ", text)
+    return text
+
+
+def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
+    pattern = PATTERNS[key]
+    matches = pattern.findall(text)
+    if matches:
+        flags.setdefault(key, []).extend(matches if isinstance(matches, list) else [matches])
+        text = pattern.sub(" ", text)
+    return text
+
+
+def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
+    """Remove non-structural descriptors inside and outside brackets."""
+
+    def _log_noise(match: re.Match[str]) -> str:
+        token = match.group(0)
+        flags.setdefault("noise", []).append(token)
+        return ""
+
+    def _strip_bracket(match: re.Match[str]) -> str:
+        inner = match.group(0)[1:-1]
+        cleaned = NOISE_REGEX.sub(_log_noise, inner)
+        cleaned = cleaned.strip(" ,;:-")
+        if cleaned.lower() in STOPWORDS:
+            cleaned = ""
+        if cleaned:
+            return cleaned
+        flags.setdefault("parenthetical", []).append(match.group(0))
+        return ""
+
+    text = re.sub(r"\([^()]*\)|\[[^\[\]]*\]", _strip_bracket, text)
+    text = NOISE_REGEX.sub(_log_noise, text)
+    return text
+
+
+def _cleanup(text: str) -> str:
+    """Final whitespace and punctuation cleanup."""
+
+    # Remove errant spaces around connectors that may appear after token removal
+    text = _fix_spacing(text)
+    # Collapse multiple whitespace characters to single spaces
+    text = re.sub(r"\s+", " ", text)
+    # Re-run spacing fix in case the previous collapse introduced new gaps
+    text = _fix_spacing(text)
+    # Consolidate repeated connectors that may result from removals
+    text = re.sub(r"([-/:+]){2,}", r"\1", text)
+    # Drop leading/trailing punctuation and whitespace
+    text = text.strip(" -/:,+")
+    return text.strip()
+
+
+def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
+    """Detect peptide-like strings and return category and info."""
+
+    lowered = text.lower()
+    if re.search(r"poly(?:-|\()[a-z:,]+", lowered):
+        return "peptide", {"type": "polymer"}
+    if re.search(r"\b(?:peptide|oligopeptide|polypeptide)\b", lowered):
+        return "peptide", {"type": "aa_terms"}
+
+    tokens = re.split(r"[-:\s]+", text)
+    if len(tokens) >= 2:
+        if all(t.upper() in AA1 for t in tokens):
+            return "peptide", {"type": "sequence_like"}
+        if all(t[:1].upper() + t[1:].lower() in AA3 for t in tokens if t):
+            return "peptide", {"type": "sequence_like"}
+    return "small_molecule", {}
+
+
+def normalize_name(name: str) -> Dict[str, object]:
+    """Normalize a chemical name and extract flags.
 
     Parameters
     ----------
     name:
-        Raw compound name.
+        Raw input chemical name.
 
     Returns
     -------
-    tuple
-        Normalised name and dictionary with detected flags. The dictionary
-        contains keys ``isotope``, ``fluorophore`` and ``noise`` amongst
-        others, each mapping to a list of strings found in the input.
+    dict
+        Dictionary with normalized fields. By default ``search_name`` equals
+        ``normalized_name``; if they differ an explanatory string is stored in
+        ``search_override_reason``.
     """
-    flags: Dict[str, List[str]] = {
-        "fluorophore": [],
-        "isotope": [],
-        "biotin": [],
-        "salt": [],
-        "hydrate": [],
-        "noise": [],
-        "parenthetical": [],
+
+    flags: Dict[str, List[str]] = {}
+    text = _unicode_normalize(name)
+    text = _fix_spacing(text)
+    base_clean = text  # for fallback
+
+    # Strip fluorophore labels before any other processing to avoid misclassifying
+    # numeric components as concentrations or noise.
+    text = _detect_and_remove(text, "fluorophore", flags)
+    text = _remove_concentrations(text, flags)
+    # Remove remaining flagged tokens
+    for key in ["salt", "isotope", "biotin", "hydrate"]:
+        text = _detect_and_remove(text, key, flags)
+    text = _remove_noise_descriptors(text, flags)
+
+    text = _cleanup(text)
+    category, peptide_info = _detect_peptide(text)
+
+    if not text:
+        # Fall back to the base-clean string and ensure it is fully cleaned
+        text = _cleanup(base_clean)
+
+    normalized_name = text.lower()
+    search_name = normalized_name
+    removed_tokens_flat = _flatten_flags(flags)
+
+    result = {
+        "normalized_name": normalized_name,
+        "search_name": search_name,
+        "search_override_reason": "",
+        "category": category,
+        "peptide_info": peptide_info,
+        "flags": flags,
+        "removed_tokens_flat": removed_tokens_flat,
+        "flag_isotope": bool(flags.get("isotope")),
+        "flag_fluorophore": bool(flags.get("fluorophore")),
+        "flag_biotin": bool(flags.get("biotin")),
+        "flag_salt": bool(flags.get("salt")),
+        "flag_hydrate": bool(flags.get("hydrate")),
     }
-
-    if not name:
-        return "", flags
-
-    out = name.strip()
-
-    # Remove common "labeled" noise but keep track
-    if "labeled" in out.lower():
-        flags["noise"].append("labeled")
-        out = re.sub(r"\b[- ]*labeled\b", "", out, flags=re.IGNORECASE)
-
-    # Detect and strip fluorophore tags such as FITC or FAM
-    for fl in ("fitc", "fam"):
-        if fl in out.lower():
-            flags["fluorophore"].append(fl)
-            out = re.sub(fl, "", out, flags=re.IGNORECASE)
-
-    # Remove stereochemistry descriptors before isotope detection
-    rs_matches = RS_PATTERN.findall(out)
-    if rs_matches:
-        flags["parenthetical"].extend(rs_matches)
-        out = RS_PATTERN.sub("", out)
-
-    # Strip bracketed blocks containing isotope labels
-    def _bracket_repl(match: re.Match[str]) -> str:
-        inner = match.group(1)
-        tokens = ISOTOPE_TOKEN_RE.findall(inner)
-        isotope_found = False
-        if len(tokens) == 1 and tokens[0][1] == "":
-            # Numeric-only placeholder such as [125]
-            mass, _ = tokens[0]
-            flags["isotope"].append(f"{mass}I")
-            isotope_found = True
-        else:
-            for mass, elem in tokens:
-                elem_up = _normalise_element(elem)
-                if elem_up and elem_up in ISOTOPE_ELEMENTS:
-                    flags["isotope"].append(f"{mass}{elem_up}")
-                    isotope_found = True
-        return "" if isotope_found else match.group(0)
-
-    out = BRACKET_BLOCK_RE.sub(_bracket_repl, out)
-
-    # Detect isotopes appearing outside brackets, e.g. 33P or 125I-
-    def isotope_repl(match: re.Match[str]) -> str:
-        mass, elem = match.groups()
-        elem_up = _normalise_element(elem)
-        if elem_up in ISOTOPE_ELEMENTS:
-            flags["isotope"].append(f"{mass}{elem_up}")
-            return ""
-        return match.group(0)
-
-    out = ISOTOPE_TOKEN_RE.sub(isotope_repl, out)
-    out = re.sub(r"\(\s*\)", "", out)  # drop empty parentheses
-    out = re.sub(r"\[\s*\]", "", out)  # drop empty brackets
-    out = re.sub(r"-\s*-", "-", out)  # collapse hyphens
-
-    # Collapse extra whitespace and punctuation
-    out = re.sub(r"\s+", " ", out)
-    out = out.strip().strip(",;-")
-    return out, flags
-
-
-__all__ = ["normalize_name"]
+    return result

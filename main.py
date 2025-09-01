@@ -1,94 +1,47 @@
-"""Command-line interface for name normalisation.
-
-Usage
------
- 
-Run ``python main.py --input examples.csv --output normalized.csv`` to read and
-normalise compound names. The resulting DataFrame is written to ``normalized.csv``.
-If ``--output`` is omitted, the DataFrame is printed to stdout.
- 
-"""
+"""Command-line interface for chemical name normalization."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
-from pathlib import Path
+from typing import Any, Dict
 
- 
 import pandas as pd
 
- 
-from mylib.io_utils import smart_read_csv
-from mylib.transforms import normalize_name
+from mylib import normalize_name, read_input_csv, validate_input, write_output_csv
 
 
-log = logging.getLogger(__name__)
-
-
-def configure_logging(level: str) -> None:
- 
-    """Configure application logging.
-
-    Parameters
-    ----------
-    level:
-        Logging level name (e.g. ``"INFO"``).
-    """
-
-    logging.basicConfig(level=getattr(logging, level.upper(), "INFO"))
-
-
-def normalise_file(path: Path, output: Path | None = None) -> pd.DataFrame:
-    """Read a CSV file, normalise names and optionally write a CSV output.
-
-    Parameters
-    ----------
-    path:
-        Input CSV file containing an ``input_name`` column.
-    output:
-        Path to write the normalised CSV. If ``None`` the result is returned but
-        not written to disk.
-
-    Returns
-    -------
-    pandas.DataFrame
-        DataFrame with additional ``normalized_name`` and ``flags`` columns.
-    """
-
- 
-    df, enc, sep = smart_read_csv(path)
-    log.info("Loaded %s with encoding %s and delimiter '%s'", path, enc, sep)
-    df[["normalized_name", "flags"]] = df["input_name"].apply(
-        lambda s: pd.Series(normalize_name(s))
-    )
- 
-    if output:
-        df.to_csv(output, index=False, encoding=enc, sep=sep)
-        log.info("Wrote normalised data to %s", output)
-    return df
-
-
-def build_parser() -> argparse.ArgumentParser:
-    """Build the command-line argument parser."""
-
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, required=True, help="CSV file")
-    parser.add_argument("--output", type=Path, help="Where to write output CSV")
- 
-    parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-    )
-    return parser
+    parser.add_argument("--input", required=True, help="Path to input CSV with column 'input_name'.")
+    parser.add_argument("--output", required=True, help="Destination path for normalized CSV.")
+    parser.add_argument("--sep", default=",", help="CSV delimiter (default ',').")
+    parser.add_argument("--encoding", default="utf-8", help="File encoding (default utf-8).")
+    parser.add_argument("--log-level", default="INFO", help="Logging level (default INFO).")
+    return parser.parse_args()
+
+
+def setup_logging(level: str) -> None:
+    logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO), format="%(levelname)s:%(name)s:%(message)s")
+
+
+def main() -> None:
+    args = parse_args()
+    setup_logging(args.log_level)
+
+    df = read_input_csv(args.input, sep=args.sep, encoding=args.encoding)
+    validate_input(df)
+
+    results: Dict[str, Any] = df["input_name"].apply(normalize_name).apply(pd.Series)
+    out_df = pd.concat([df, results], axis=1)
+
+    # Serialize complex columns as JSON strings for CSV compatibility
+    out_df["flags"] = out_df["flags"].apply(json.dumps)
+    out_df["peptide_info"] = out_df["peptide_info"].apply(json.dumps)
+
+    write_output_csv(out_df, args.output, sep=args.sep, encoding=args.encoding)
 
 
 if __name__ == "__main__":
- 
-    args = build_parser().parse_args()
-    configure_logging(args.log_level)
-    df = normalise_file(args.input, args.output)
-    if args.output is None:
-        print(df)
- 
+    main()

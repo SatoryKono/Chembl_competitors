@@ -1,6 +1,6 @@
-# Chembl Competitors
+# Chemical Name Normalizer
 
-Utilities for loading and normalising chemical compound names.
+This project provides utilities to preprocess and normalize chemical names in bulk.
 
 ## Installation
 
@@ -8,29 +8,89 @@ Utilities for loading and normalising chemical compound names.
 pip install -r requirements.txt
 ```
 
+Optional quality tools:
+
+```bash
+pip install black ruff mypy pytest
+```
+
 ## Usage
 
 ```bash
-
-python main.py --input examples.csv --output normalized_competitor.csv
+python main.py --input examples1.csv --output out.csv
 ```
 
-If ``--output`` is omitted the normalised table is printed to ``stdout``.
+### Arguments
 
+- `--input`: path to input CSV containing an `input_name` column.
+- `--output`: path for the output CSV.
+- `--sep`: CSV delimiter (default `,`).
+- `--encoding`: file encoding (default `utf-8`).
+- `--log-level`: logging level.
 
+If the input file contains unescaped commas within chemical names, the loader
+falls back to a line-by-line parser. Ensure the first line is the header
+`input_name` and each subsequent line contains a single name.
 
 ## Development
 
-Formatting and static checks:
+Recommended commands:
 
 ```bash
 black .
-ruff .
+ruff check .
 mypy .
+pytest
 ```
 
 ## Testing
 
-```bash
-pytest -q
+Unit tests live under `tests/` and can be run with `pytest`.
+
+## Example
+
+Input:
 ```
+[3H] 8 - oh dpat
+biotinylated peptide
+```
+
+Output includes columns:
+- `normalized_name`
+- `search_name`
+- `search_override_reason`
+- `category`
+- `peptide_info`
+- `flags`
+- `removed_tokens_flat`
+- `flag_isotope`
+- `flag_fluorophore`
+- `flag_biotin`
+- `flag_salt`
+- `flag_hydrate`
+
+Isotopic labels such as `[3H]`, `14C`, `d5`, or `U-13C` are removed from the
+normalized name and logged under `flags.isotope`.
+
+Salts and mineral acids such as hydrochloride, HCl, HBr, HNO3 or H2SO4 are
+removed from the normalized name and logged under `flags.salt`. Flattened
+tokens are also provided in `removed_tokens_flat` using a
+`<flag>:<token>|<flag>:<token>` format.
+
+Non-structural descriptors like `solution`, `soln`, `stock`, `buffer`,
+`USP/EP/ACS`, `reagent`, `analytical grade`, `crystalline`, `powder`, or
+purity annotations (e.g., `≥95% purity`) are stripped in two passes—first within
+parentheses/brackets and then globally—with the removed terms collected under
+`flags.noise`.
+
+`search_name` always matches `normalized_name` unless a documented override
+occurs. The reason for any override is recorded in `search_override_reason`.
+
+Fluorophore labels such as **Alexa Fluor**, **HiLyte Fluor**, **DyLight**,
+**CF** dye series, **Janelia Fluor**, or **BODIPY** families are stripped
+early in the pipeline and logged under `flags.fluorophore` so that base
+chemical names remain intact.
+
+## License
+
+MIT
