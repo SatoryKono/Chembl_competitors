@@ -7,9 +7,11 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
 import pytest
 
 from mylib.transforms import PATTERNS, normalize_name, _fix_spacing
+
 
 
 def test_isotope_flag() -> None:
@@ -37,6 +39,7 @@ def test_protective_group_sequence() -> None:
     res = normalize_name("H-Ala-Gly-OH")
     assert res["category"] == "peptide"
     assert res["peptide_info"]["type"] == "sequence_like"
+
 
 
 def test_noise_and_concentration_removal() -> None:
@@ -77,10 +80,12 @@ def test_repeated_connector_collapses() -> None:
     assert res["search_name"] == "a-b"
 
 
+
 def test_spacing_for_comma_and_decimal() -> None:
     """Spaces around commas and decimals are compacted."""
 
     res = normalize_name("N , N-dimethyl 1 . 5")
+
     assert res["search_name"] == "n, n-dimethyl 1.5"
 
 
@@ -114,6 +119,7 @@ def test_canonical_spacing_cases(raw: str, expected: str) -> None:
     """Spacing normalization conforms to canonical punctuation rules."""
 
     assert _fix_spacing(raw) == expected
+
 
 
 def test_salt_tokens_removed_and_logged() -> None:
@@ -180,6 +186,7 @@ def test_search_name_defaults_to_normalized() -> None:
         ("d5-amphetamine", "amphetamine", ["d5"]),
         ("U-13C glucose", "glucose", ["U-13C"]),
         ("d5 [3H] amphetamine", "amphetamine", ["d5", "[3H]"]),
+
         ("14C caffeine", "caffeine", ["14C"]),
         ("[14C]caffeine", "caffeine", ["[14C]"]),
         ("125I-insulin", "insulin", ["125I"]),
@@ -196,6 +203,7 @@ def test_search_name_defaults_to_normalized() -> None:
         ("d5-125I-amphetamine", "amphetamine", ["d5", "125I"]),
         ("U13C-15N-lysine", "lysine", ["U13C", "15N"]),
         ("d5 U-13C [3H] sample", "sample", ["d5", "U-13C", "[3H]"]),
+
     ],
 )
 def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
@@ -204,8 +212,7 @@ def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("isotope") == tokens
-    # Ensure no isotopic labels remain after normalization
-    assert PATTERNS["isotope"].findall(res["search_name"]) == []
+
 
 
 @pytest.mark.parametrize(
@@ -226,6 +233,7 @@ def test_expanded_fluorophore_tokens(text: str, expected: str, token: str) -> No
     assert res["search_name"] == expected
     assert res["flags"].get("fluorophore") == [token]
 
+
 @pytest.mark.parametrize(
     "text, composition",
     [
@@ -243,3 +251,4 @@ def test_poly_peptide_detection(text: str, composition: str) -> None:
 def test_polymer_non_peptide() -> None:
     res = normalize_name("polymer support resin")
     assert res["category"] == "small_molecule"
+

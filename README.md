@@ -4,12 +4,12 @@ This project provides utilities to preprocess and normalize chemical names in bu
 
 ## Installation
 
-
 During normalization the library canonicalizes spaces around punctuation so
 that artifacts such as `5 ' ; 1,3 -diol` become `5'; 1,3-diol`. Brackets lose
 padding, connectors (`-`, `/`, `:`, `+`) have no surrounding spaces, semicolons
 and commas carry a single space on the right, and primes cling to neighboring
 tokens.
+
 
 ```bash
 pip install -r requirements.txt
@@ -34,6 +34,7 @@ python main.py --input examples1.csv --output out.csv
 - `--sep`: CSV delimiter (default `,`).
 - `--encoding`: file encoding (default `utf-8`).
 - `--log-level`: logging level.
+
 
 If the input file contains unescaped commas within chemical names, the loader
 falls back to a line-by-line parser. Ensure the first line is the header
@@ -78,10 +79,12 @@ Output includes columns:
 - `flag_hydrate`
 - `flag_empty_after_clean`
 
+
 Isotopic labels such as `[3H]`, `[125I]`, `14C`, `18F`, bare prefixes like `D`
 or `T`, `d5`-style deuteration, `deuterated`/`tritiated` descriptors, and
 `U-13C` are removed from the normalized name and logged under
 `flags.isotope`.
+
 
 Salts and mineral acids such as hydrochloride, HCl, HBr, HNO3 or H2SO4 are
 removed from the normalized name and logged under `flags.salt`. Flattened
@@ -115,6 +118,7 @@ the output sets `category = peptide` and populates `peptide_info` with the
 peptide type and, for polymer forms, the normalized composition. Generic
 materials like "polymer support resin" are not misclassified as peptides
 because amino-acid signatures are required.
+
 
 ## License
 

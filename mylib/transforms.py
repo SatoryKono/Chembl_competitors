@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
+
 # Tokens representing salts and mineral acids to strip early in processing
 SALT_TOKENS = [
     "hydrochloride",
@@ -68,15 +69,15 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         re.IGNORECASE | re.VERBOSE,
     ),
     "isotope": re.compile(
-        r"""
-        (
-            \[\s*\d{1,3}\s*[A-Z][a-z]?\s*\]                           # bracketed forms
-            |(?<![A-Za-z0-9])(?:3H|2H|D|T|13C|14C|15N|18F|125I)(?![A-Za-z0-9]) # bare prefixes
-            |\bd\d+\b                                                    # d-number deuteration
-            |\b(?:deuterated|tritiated|U-?13C)\b                          # words
-        )
-        """,
-        re.IGNORECASE | re.VERBOSE,
+        r"(?<!\w)(?:"
+        r"\[(?:3H|14C|13C|15N|2H|125I|18F)\]"  # bracketed isotopes
+        r"|(?:3H|14C|13C|15N|2H|125I|18F|D|T)"    # bare prefixes and single letters
+        r"|d\d+"                                  # deuteration like d5
+        r"|U-?13C"                                 # uniform 13C labeling
+        r"|tritiated|deuterated"                   # descriptive words
+        r")(?!\w)",
+        re.IGNORECASE,
+
     ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
     "salt": re.compile(
@@ -85,6 +86,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
     ),
     "hydrate": re.compile(
         r"\b(" + "|".join(map(re.escape, HYDRATE_TOKENS)) + r")\b",
+
         re.IGNORECASE,
     ),
 }
@@ -115,6 +117,7 @@ NOISE_REGEX = re.compile(
 )
 
 STOPWORDS = {"in", "of", "and"}
+
 
 AA1 = set("ACDEFGHIKLMNPQRSTVWY")
 AA3 = {
@@ -158,6 +161,7 @@ def _flatten_flags(flags: Dict[str, List[str]]) -> str:
         for token in flags.get(key, []):
             parts.append(f"{key}:{token}")
     return "|".join(parts)
+
 
 
 def _unicode_normalize(text: str) -> str:
@@ -210,6 +214,10 @@ def _fix_spacing(text: str) -> str:
     return text
 
 
+
+
+
+
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
     pattern = re.compile(
         r"\b\d+(?:\.\d+)?\s*(?:mM|M|uM|µM|nM|pM|%|mg/mL|mg\/mL|g/mL|mg|g|mL)\b",
@@ -222,6 +230,19 @@ def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
     return text
 
 
+
+
+def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
+    pattern = re.compile(r"(\([^)]*\)|\[[^]]*\])")
+    matches = pattern.findall(text)
+    if matches:
+        flags.setdefault("parenthetical", []).extend(matches)
+        text = pattern.sub(" ", text)
+    return text
+
+
+
+
 def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     pattern = PATTERNS[key]
     matches = pattern.findall(text)
@@ -229,6 +250,7 @@ def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
         flags.setdefault(key, []).extend(matches if isinstance(matches, list) else [matches])
         text = pattern.sub(" ", text)
     return text
+
 
 
 def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
@@ -260,9 +282,11 @@ def _cleanup(text: str) -> str:
 
     # Remove errant spaces around connectors that may appear after token removal
     text = _fix_spacing(text)
+
     # Fix decimals such as ``1 . 5`` -> ``1.5``
     text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
     text = re.sub(r"\s*\.\s*", ".", text)
+
     # Collapse multiple whitespace characters to single spaces
     text = re.sub(r"\s+", " ", text)
     # Re-run spacing fix in case the previous collapse introduced new gaps
@@ -270,6 +294,7 @@ def _cleanup(text: str) -> str:
     # Consolidate repeated connectors that may result from removals
     text = re.sub(r"([-/:+]){2,}", r"\1", text)
     # Drop leading/trailing punctuation and whitespace
+
     text = text.strip(" -/:,+")
     return text.strip()
 
@@ -278,6 +303,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     """Detect peptide-like strings and return category and info."""
 
     lowered = text.lower()
+
 
     # polymer-style notation: poly-Glu:Tyr, poly (Glu, Tyr), poly Glu Tyr
     poly_match = re.search(
@@ -308,6 +334,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
         if all(
             t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t
         ):
+
             return "peptide", {"type": "sequence_like"}
     return "small_molecule", {}
 
@@ -323,6 +350,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     Returns
     -------
     dict
+
         Dictionary with normalized fields. By default ``search_name`` equals
         ``normalized_name``; if they differ an explanatory string is stored in
         ``search_override_reason``.
@@ -332,6 +360,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     text = _unicode_normalize(name)
     text = _fix_spacing(text)
     base_clean = text  # for fallback
+
 
     # Strip fluorophore labels before any other processing to avoid misclassifying
     # numeric components as concentrations or noise.
@@ -344,6 +373,7 @@ def normalize_name(name: str) -> Dict[str, object]:
 
     text = _cleanup(text)
     category, peptide_info = _detect_peptide(text)
+
     status = ""
     flag_empty_after_clean = False
     if not text:
@@ -352,14 +382,23 @@ def normalize_name(name: str) -> Dict[str, object]:
         if not text:
             # As a last resort, minimally normalize the original text
             text = _cleanup(_unicode_normalize(name))
+
         status = "empty_after_clean"
         flag_empty_after_clean = True
         logger.warning("Name empty after cleaning; using fallback: %r", name)
 
+
+
+
+
     # Ensure spacing is compact after any late fallbacks
     normalized_name = _fix_spacing(text).lower()
+
+
     search_name = normalized_name
     removed_tokens_flat = _flatten_flags(flags)
+
+
 
     result = {
         "normalized_name": normalized_name,
