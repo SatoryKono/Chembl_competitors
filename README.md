@@ -40,10 +40,10 @@ python main.py --input examples1.csv --output out.csv
 - `--log-level`: logging level.
 
 
+
 If the input file contains unescaped commas within chemical names, the loader
 falls back to a line-by-line parser. Ensure the first line is the header
 `input_name` and each subsequent line contains a single name.
-
 
 ## Development
 
@@ -71,20 +71,17 @@ biotinylated peptide
 Output includes columns:
 - `normalized_name`
 - `search_name`
-
 - `search_override_reason`
 - `category`
 - `peptide_info`
 - `flags`
 - `removed_tokens_flat`
 - `status`
-
 - `flag_isotope`
 - `flag_fluorophore`
 - `flag_biotin`
 - `flag_salt`
 - `flag_hydrate`
-
 - `flag_empty_after_clean`
 
 Isotopic labels such as `[3H]`, `14C`, `d5`, or `U-13C` are removed from the
@@ -106,7 +103,6 @@ to a minimally cleaned version of the original text. In such cases the output
 includes `status = empty_after_clean` and sets the boolean indicator
 `flag_empty_after_clean` to `True` so these rows can be reviewed manually.
 
-
 `search_name` always matches `normalized_name` unless a documented override
 occurs. The reason for any override is recorded in `search_override_reason`.
 
@@ -125,6 +121,7 @@ the output sets `category = peptide` and populates `peptide_info` with the
 peptide type and, for polymer forms, the normalized composition. Generic
 materials like "polymer support resin" are not misclassified as peptides
 because amino-acid signatures are required.
+
 
 
 

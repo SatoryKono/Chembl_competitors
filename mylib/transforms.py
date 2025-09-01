@@ -90,7 +90,6 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
     ),
 }
 
-
 # Non-structural descriptor tokens to remove in two passes
 NOISE_WORDS = [
     "solution",
@@ -178,6 +177,7 @@ def _unicode_normalize(text: str) -> str:
 
 def _fix_spacing(text: str) -> str:
 
+
     """Normalize spacing around punctuation and decimals.
 
     In addition to compacting spaces around ``-``, ``/``, ``:``, and ``+``,
@@ -209,6 +209,7 @@ def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
     return text
 
 
+
 def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
     pattern = re.compile(r"(\([^)]*\)|\[[^]]*\])")
     matches = pattern.findall(text)
@@ -216,6 +217,7 @@ def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
         flags.setdefault("parenthetical", []).extend(matches)
         text = pattern.sub(" ", text)
     return text
+
 
 
 def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
@@ -273,6 +275,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     """Detect peptide-like strings and return category and info."""
 
     lowered = text.lower()
+
 
 
 
@@ -343,8 +346,10 @@ def normalize_name(name: str) -> Dict[str, object]:
     text = _remove_noise_descriptors(text, flags)
 
 
+
     text = _cleanup(text)
     category, peptide_info = _detect_peptide(text)
+
 
 
     status = ""
@@ -355,14 +360,17 @@ def normalize_name(name: str) -> Dict[str, object]:
         if not text:
 
 
+
             # As a last resort, minimally normalize the original text
             text = _cleanup(_unicode_normalize(name))
+
 
 
 
         status = "empty_after_clean"
         flag_empty_after_clean = True
         logger.warning("Name empty after cleaning; using fallback: %r", name)
+
 
 
 
@@ -384,13 +392,11 @@ def normalize_name(name: str) -> Dict[str, object]:
         "flags": flags,
         "removed_tokens_flat": removed_tokens_flat,
         "status": status,
-
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
-
         "flag_empty_after_clean": flag_empty_after_clean,
     }
     return result

@@ -73,7 +73,6 @@ def read_input_csv(
             raise ValueError(msg) from exc
         df = pd.DataFrame({"input_name": [line.strip() for line in lines[1:]]})
 
-
     missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         msg = f"Missing required columns: {missing}"
