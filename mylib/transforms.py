@@ -171,9 +171,21 @@ def _unicode_normalize(text: str) -> str:
 
 
 def _fix_spacing(text: str) -> str:
-    """Remove spaces around punctuation like '-', '/', ':', '+'."""
 
-    return re.sub(r"\s*([-/:+])\s*", r"\1", text)
+    """Normalize spacing around punctuation and decimals.
+
+    In addition to compacting spaces around ``-``, ``/``, ``:``, and ``+``,
+    this function also removes extraneous spaces surrounding commas and
+    periods. Decimal numbers such as ``1 . 5`` are collapsed to ``1.5``.
+    """
+
+    # Compact common connector characters
+    text = re.sub(r"\s*([-/:+,])\s*", r"\1", text)
+    # Remove spaces around periods, including decimal numbers
+    text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
+    text = re.sub(r"\s*\.\s*", ".", text)
+    return text
+
 
 
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
@@ -241,16 +253,36 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     """Detect peptide-like strings and return category and info."""
 
     lowered = text.lower()
-    if re.search(r"poly(?:-|\()[a-z:,]+", lowered):
-        return "peptide", {"type": "polymer"}
+    # polymer-style notation: poly-Glu:Tyr, poly (Glu, Tyr), poly Glu Tyr
+    poly_match = re.search(
+        r"\bpoly\b(?:\s*\(\s*|\s+|-)([A-Za-z]{1,3}(?:[,:\s-]+[A-Za-z]{1,3})*)\)?",
+        text,
+    )
+    if poly_match:
+        comp_tokens = [t for t in re.split(r"[,:\s-]+", poly_match.group(1)) if t]
+        comp_clean = [t.lower() for t in comp_tokens]
+        if comp_clean and all(
+            t.upper() in AA1 or t[:1].upper() + t[1:].lower() in AA3
+            for t in comp_clean
+        ):
+            return "peptide", {
+                "type": "polymer",
+                "composition": ":".join(comp_clean),
+            }
+
     if re.search(r"\b(?:peptide|oligopeptide|polypeptide)\b", lowered):
         return "peptide", {"type": "aa_terms"}
 
-    tokens = re.split(r"[-:\s]+", text)
-    if len(tokens) >= 2:
-        if all(t.upper() in AA1 for t in tokens):
+    tokens = [t for t in re.split(r"[-:,\s]+", text) if t]
+    protect = {"H", "AC", "BOC", "OH", "NH2"}
+    tokens_clean = [t for t in tokens if t.upper() not in protect]
+    if len(tokens_clean) >= 2:
+        if all(t.upper() in AA1 for t in tokens_clean):
             return "peptide", {"type": "sequence_like"}
-        if all(t[:1].upper() + t[1:].lower() in AA3 for t in tokens if t):
+        if all(
+            t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t
+        ):
+
             return "peptide", {"type": "sequence_like"}
     return "small_molecule", {}
 
@@ -294,13 +326,17 @@ def normalize_name(name: str) -> Dict[str, object]:
         # Fall back to the base-clean string and ensure it is fully cleaned
         text = _cleanup(base_clean)
         if not text:
-            text = _unicode_normalize(name)
+            # As a last resort, minimally normalize the original text
+            text = _cleanup(_unicode_normalize(name))
+
         status = "empty_after_clean"
         flag_empty_after_clean = True
         logger.warning("Name empty after cleaning; using fallback: %r", name)
 
 
-    normalized_name = text.lower()
+    # Ensure spacing is compact after any late fallbacks
+    normalized_name = _fix_spacing(text).lower()
+
     search_name = normalized_name
     removed_tokens_flat = _flatten_flags(flags)
 
@@ -312,15 +348,12 @@ def normalize_name(name: str) -> Dict[str, object]:
         "peptide_info": peptide_info,
         "flags": flags,
         "removed_tokens_flat": removed_tokens_flat,
-
         "status": status,
-
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
-
         "flag_empty_after_clean": flag_empty_after_clean,
 
     }
