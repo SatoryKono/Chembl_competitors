@@ -32,6 +32,17 @@ SALT_TOKENS = [
     "H2SO4",
 ]
 
+# Tokens representing hydrate forms and related descriptors
+HYDRATE_TOKENS = [
+    "monohydrate",
+    "dihydrate",
+    "trihydrate",
+    "tetrahydrate",
+    "pentahydrate",
+    "hydrate",
+    "anhydrous",
+]
+
 # Regex patterns for various flags
 PATTERNS: Dict[str, re.Pattern[str]] = {
     "fluorophore": re.compile(
@@ -47,7 +58,10 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         r"\b(" + "|".join(map(re.escape, SALT_TOKENS)) + r")\b",
         re.IGNORECASE,
     ),
-    "hydrate": re.compile(r"\b(?:mono|di|tri|tetra|penta)?hydrate|anhydrous\b", re.IGNORECASE),
+    "hydrate": re.compile(
+        r"\b(" + "|".join(map(re.escape, HYDRATE_TOKENS)) + r")\b",
+        re.IGNORECASE,
+    ),
     "noise": re.compile(
         r"\b(solution|aqueous|buffer|USP|EP|ACS|reagent|analytical|grade|powder|crystalline|purity|lyophilized)\b",
         re.IGNORECASE,

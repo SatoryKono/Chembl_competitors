@@ -69,6 +69,22 @@ def test_salt_and_hydrate_combination() -> None:
     assert res["flags"].get("hydrate") == ["monohydrate"]
 
 
+@pytest.mark.parametrize(
+    "token",
+    [
+        "dihydrate",
+        "trihydrate",
+        "tetrahydrate",
+        "pentahydrate",
+        "anhydrous",
+    ],
+)
+def test_various_hydrate_tokens(token: str) -> None:
+    res = normalize_name(f"glucose {token}")
+    assert res["search_name"] == "glucose"
+    assert res["flags"].get("hydrate") == [token]
+
+
 def test_removed_tokens_flat() -> None:
     text = "Alexa Fluor 488 [3H] histamine hydrochloride"
     res = normalize_name(text)
