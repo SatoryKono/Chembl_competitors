@@ -67,3 +67,17 @@ def test_salt_and_hydrate_combination() -> None:
     assert res["search_name"] == "metformin"
     assert res["flags"].get("salt") == ["hydrochloride"]
     assert res["flags"].get("hydrate") == ["monohydrate"]
+
+
+def test_removed_tokens_flat() -> None:
+    text = "Alexa Fluor 488 [3H] histamine hydrochloride"
+    res = normalize_name(text)
+    assert (
+        res["removed_tokens_flat"]
+        == "fluorophore:Alexa Fluor 488|isotope:[3H]|salt:hydrochloride"
+    )
+
+
+def test_removed_tokens_flat_empty() -> None:
+    res = normalize_name("aspirin")
+    assert res["removed_tokens_flat"] == ""

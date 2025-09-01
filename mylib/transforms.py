@@ -35,11 +35,11 @@ SALT_TOKENS = [
 # Regex patterns for various flags
 PATTERNS: Dict[str, re.Pattern[str]] = {
     "fluorophore": re.compile(
-        r"\b(FITC|Alexa\s?\d+|Cy\d+|Rhodamine|TRITC|DAPI|Texas\sRed|PE|PerCP|APC)\b",
+        r"\b(FITC|Alexa(?:\sFluor)?\s?\d+|Cy\d+|Rhodamine|TRITC|DAPI|Texas\sRed|PE|PerCP|APC)\b",
         re.IGNORECASE,
     ),
     "isotope": re.compile(
-        r"\b(\[\d+[A-Za-z]\]|\d+[A-Za-z]|[dD]\d+|U-?13C|tritiated|deuterated)\b",
+        r"(?<!\w)(?:\[\d+[A-Za-z]\]|\d+[A-Za-z]|[dD]\d+|U-?13C|tritiated|deuterated)(?!\w)",
         re.IGNORECASE,
     ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
@@ -77,6 +77,25 @@ AA3 = {
     "Trp",
     "Tyr",
 }
+
+
+def _flatten_flags(flags: Dict[str, List[str]]) -> str:
+    """Flatten selected flag tokens into a pipe-delimited string."""
+
+    order = [
+        "fluorophore",
+        "isotope",
+        "biotin",
+        "salt",
+        "hydrate",
+        "noise",
+        "parenthetical",
+    ]
+    parts: List[str] = []
+    for key in order:
+        for token in flags.get(key, []):
+            parts.append(f"{key}:{token}")
+    return "|".join(parts)
 
 
 def _unicode_normalize(text: str) -> str:
@@ -194,6 +213,7 @@ def normalize_name(name: str) -> Dict[str, object]:
 
     normalized_name = text
     search_name = _cleanup(text).lower()
+    removed_tokens_flat = _flatten_flags(flags)
 
     result = {
         "normalized_name": normalized_name,
@@ -201,6 +221,7 @@ def normalize_name(name: str) -> Dict[str, object]:
         "category": category,
         "peptide_info": peptide_info,
         "flags": flags,
+        "removed_tokens_flat": removed_tokens_flat,
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
