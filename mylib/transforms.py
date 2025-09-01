@@ -171,6 +171,7 @@ def _unicode_normalize(text: str) -> str:
 
 
 def _fix_spacing(text: str) -> str:
+
     """Normalize spacing around punctuation and decimals.
 
     In addition to compacting spaces around ``-``, ``/``, ``:``, and ``+``,
@@ -184,6 +185,7 @@ def _fix_spacing(text: str) -> str:
     text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
     text = re.sub(r"\s*\.\s*", ".", text)
     return text
+
 
 
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
@@ -251,7 +253,6 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     """Detect peptide-like strings and return category and info."""
 
     lowered = text.lower()
-
     # polymer-style notation: poly-Glu:Tyr, poly (Glu, Tyr), poly Glu Tyr
     poly_match = re.search(
         r"\bpoly\b(?:\s*\(\s*|\s+|-)([A-Za-z]{1,3}(?:[,:\s-]+[A-Za-z]{1,3})*)\)?",
@@ -281,6 +282,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
         if all(
             t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t
         ):
+
             return "peptide", {"type": "sequence_like"}
     return "small_molecule", {}
 
@@ -317,6 +319,7 @@ def normalize_name(name: str) -> Dict[str, object]:
 
     text = _cleanup(text)
     category, peptide_info = _detect_peptide(text)
+
     status = ""
     flag_empty_after_clean = False
     if not text:
@@ -325,12 +328,15 @@ def normalize_name(name: str) -> Dict[str, object]:
         if not text:
             # As a last resort, minimally normalize the original text
             text = _cleanup(_unicode_normalize(name))
+
         status = "empty_after_clean"
         flag_empty_after_clean = True
         logger.warning("Name empty after cleaning; using fallback: %r", name)
 
+
     # Ensure spacing is compact after any late fallbacks
     normalized_name = _fix_spacing(text).lower()
+
     search_name = normalized_name
     removed_tokens_flat = _flatten_flags(flags)
 
@@ -349,5 +355,6 @@ def normalize_name(name: str) -> Dict[str, object]:
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
         "flag_empty_after_clean": flag_empty_after_clean,
+
     }
     return result
