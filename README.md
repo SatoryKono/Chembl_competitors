@@ -86,6 +86,11 @@ parentheses/brackets and then globally—with the removed terms collected under
 `search_name` always matches `normalized_name` unless a documented override
 occurs. The reason for any override is recorded in `search_override_reason`.
 
+Fluorophore labels such as **Alexa Fluor**, **HiLyte Fluor**, **DyLight**,
+**CF** dye series, **Janelia Fluor**, or **BODIPY** families are stripped
+early in the pipeline and logged under `flags.fluorophore` so that base
+chemical names remain intact.
+
 ## License
 
 MIT

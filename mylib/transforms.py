@@ -46,8 +46,26 @@ HYDRATE_TOKENS = [
 # Regex patterns for various flags
 PATTERNS: Dict[str, re.Pattern[str]] = {
     "fluorophore": re.compile(
-        r"\b(FITC|Alexa(?:\sFluor)?\s?\d+|Cy\d+|Rhodamine|TRITC|DAPI|Texas\sRed|PE|PerCP|APC)\b",
-        re.IGNORECASE,
+        r"""
+        \b(
+            FITC|
+            Alexa(?:\s|-)?Fluor[\s-]?\d+|
+            HiLyte(?:\s|-)?(?:Fluor)?[\s-]?\d+|
+            DyLight[\s-]?\d+|
+            CF[\s-]?\d+|
+            Janelia(?:\s|-)?Fluor[\s-]?\d+|
+            BODIPY(?:[-/][A-Za-z0-9/]+|\s(?:[A-Za-z]{1,3}|[0-9/]+)){0,2}|
+            Cy\d+|
+            Rhodamine|
+            TRITC|
+            DAPI|
+            Texas\sRed|
+            PE|
+            PerCP|
+            APC
+        )\b
+        """,
+        re.IGNORECASE | re.VERBOSE,
     ),
     "isotope": re.compile(
         r"(?<!\w)(?:"
@@ -258,9 +276,12 @@ def normalize_name(name: str) -> Dict[str, object]:
     text = _fix_spacing(text)
     base_clean = text  # for fallback
 
+    # Strip fluorophore labels before any other processing to avoid misclassifying
+    # numeric components as concentrations or noise.
+    text = _detect_and_remove(text, "fluorophore", flags)
     text = _remove_concentrations(text, flags)
-    # Strip salts before other markers to prevent them from being hidden
-    for key in ["salt", "isotope", "fluorophore", "biotin", "hydrate"]:
+    # Remove remaining flagged tokens
+    for key in ["salt", "isotope", "biotin", "hydrate"]:
         text = _detect_and_remove(text, key, flags)
     text = _remove_noise_descriptors(text, flags)
 
