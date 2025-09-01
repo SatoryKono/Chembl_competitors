@@ -68,11 +68,34 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         r"\b(" + "|".join(map(re.escape, HYDRATE_TOKENS)) + r")\b",
         re.IGNORECASE,
     ),
-    "noise": re.compile(
-        r"\b(solution|aqueous|buffer|USP|EP|ACS|reagent|analytical|grade|powder|crystalline|purity|lyophilized)\b",
-        re.IGNORECASE,
-    ),
 }
+
+# Non-structural descriptor tokens to remove in two passes
+NOISE_WORDS = [
+    "solution",
+    "soln",
+    "aqueous",
+    r"aq\.",
+    "stock",
+    "buffer",
+    "USP",
+    "EP",
+    "ACS",
+    "reagent",
+    "analytical",
+    "grade",
+    "crystal(?:line)?",
+    "powder",
+    "PBS",
+]
+NOISE_WITH_ID = r"(?:lot|cat(?:alog)?|code|ref)[\s:_-]*\w+"
+PURITY_PATTERN = r"≥?\s*\d{1,2}\s*%?\s*purity"
+NOISE_REGEX = re.compile(
+    rf"{NOISE_WITH_ID}|\b(?:{'|'.join(NOISE_WORDS)})\b|{PURITY_PATTERN}",
+    re.IGNORECASE,
+)
+
+STOPWORDS = {"in", "of", "and"}
 
 AA1 = set("ACDEFGHIKLMNPQRSTVWY")
 AA3 = {
@@ -147,21 +170,36 @@ def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
     return text
 
 
-def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
-    pattern = re.compile(r"(\([^)]*\)|\[[^]]*\])")
-    matches = pattern.findall(text)
-    if matches:
-        flags.setdefault("parenthetical", []).extend(matches)
-        text = pattern.sub(" ", text)
-    return text
-
-
 def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     pattern = PATTERNS[key]
     matches = pattern.findall(text)
     if matches:
         flags.setdefault(key, []).extend(matches if isinstance(matches, list) else [matches])
         text = pattern.sub(" ", text)
+    return text
+
+
+def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
+    """Remove non-structural descriptors inside and outside brackets."""
+
+    def _log_noise(match: re.Match[str]) -> str:
+        token = match.group(0)
+        flags.setdefault("noise", []).append(token)
+        return ""
+
+    def _strip_bracket(match: re.Match[str]) -> str:
+        inner = match.group(0)[1:-1]
+        cleaned = NOISE_REGEX.sub(_log_noise, inner)
+        cleaned = cleaned.strip(" ,;:-")
+        if cleaned.lower() in STOPWORDS:
+            cleaned = ""
+        if cleaned:
+            return cleaned
+        flags.setdefault("parenthetical", []).append(match.group(0))
+        return ""
+
+    text = re.sub(r"\([^()]*\)|\[[^\[\]]*\]", _strip_bracket, text)
+    text = NOISE_REGEX.sub(_log_noise, text)
     return text
 
 
@@ -224,8 +262,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     # Strip salts before other markers to prevent them from being hidden
     for key in ["salt", "isotope", "fluorophore", "biotin", "hydrate"]:
         text = _detect_and_remove(text, key, flags)
-    text = _remove_parenthetical(text, flags)
-    text = _detect_and_remove(text, "noise", flags)
+    text = _remove_noise_descriptors(text, flags)
 
     text = _cleanup(text)
     category, peptide_info = _detect_peptide(text)

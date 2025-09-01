@@ -37,6 +37,15 @@ def test_noise_and_concentration_removal() -> None:
     assert res["search_name"] == "sample"
 
 
+def test_parenthetical_noise_two_pass() -> None:
+    res = normalize_name("histamine (solution, 10 mM in PBS)")
+    noise_flags = res["flags"].get("noise", [])
+    assert res["search_name"] == "histamine"
+    assert "solution" in noise_flags
+    assert "PBS" in noise_flags
+    assert any("10 mM" in t for t in noise_flags)
+
+
 @pytest.mark.parametrize("connector", ["-", "/", "+", ":"])
 def test_spacing_compaction_after_flag_removal(connector: str) -> None:
     """Removal of flagged tokens should not leave spaces around connectors."""

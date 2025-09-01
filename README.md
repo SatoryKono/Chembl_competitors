@@ -77,6 +77,12 @@ removed from the normalized name and logged under `flags.salt`. Flattened
 tokens are also provided in `removed_tokens_flat` using a
 `<flag>:<token>|<flag>:<token>` format.
 
+Non-structural descriptors like `solution`, `soln`, `stock`, `buffer`,
+`USP/EP/ACS`, `reagent`, `analytical grade`, `crystalline`, `powder`, or
+purity annotations (e.g., `≥95% purity`) are stripped in two passes—first within
+parentheses/brackets and then globally—with the removed terms collected under
+`flags.noise`.
+
 `search_name` always matches `normalized_name` unless a documented override
 occurs. The reason for any override is recorded in `search_override_reason`.
 
