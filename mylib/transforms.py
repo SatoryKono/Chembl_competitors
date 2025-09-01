@@ -210,7 +210,9 @@ def normalize_name(name: str) -> Dict[str, object]:
     Returns
     -------
     dict
-        Dictionary with normalized fields.
+        Dictionary with normalized fields. By default ``search_name`` equals
+        ``normalized_name``; if they differ an explanatory string is stored in
+        ``search_override_reason``.
     """
 
     flags: Dict[str, List[str]] = {}
@@ -229,15 +231,17 @@ def normalize_name(name: str) -> Dict[str, object]:
     category, peptide_info = _detect_peptide(text)
 
     if not text:
-        text = base_clean
+        # Fall back to the base-clean string and ensure it is fully cleaned
+        text = _cleanup(base_clean)
 
-    normalized_name = text
-    search_name = _cleanup(text).lower()
+    normalized_name = text.lower()
+    search_name = normalized_name
     removed_tokens_flat = _flatten_flags(flags)
 
     result = {
         "normalized_name": normalized_name,
         "search_name": search_name,
+        "search_override_reason": "",
         "category": category,
         "peptide_info": peptide_info,
         "flags": flags,

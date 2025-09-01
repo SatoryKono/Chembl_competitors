@@ -99,6 +99,14 @@ def test_removed_tokens_flat_empty() -> None:
     assert res["removed_tokens_flat"] == ""
 
 
+def test_search_name_defaults_to_normalized() -> None:
+    """search_name should equal normalized_name when no override reason."""
+
+    res = normalize_name("Histamine")
+    assert res["search_name"] == res["normalized_name"]
+    assert res["search_override_reason"] == ""
+
+
 @pytest.mark.parametrize(
     "text, expected, tokens",
     [
