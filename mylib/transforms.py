@@ -104,7 +104,17 @@ def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
 
 
 def _cleanup(text: str) -> str:
+    """Final whitespace and punctuation cleanup."""
+
+    # Remove errant spaces around connectors that may appear after token removal
+    text = _fix_spacing(text)
+    # Collapse multiple whitespace characters to single spaces
     text = re.sub(r"\s+", " ", text)
+    # Re-run spacing fix in case the previous collapse introduced new gaps
+    text = _fix_spacing(text)
+    # Consolidate repeated connectors that may result from removals
+    text = re.sub(r"([-/:+]){2,}", r"\1", text)
+    # Drop leading/trailing punctuation and whitespace
     text = text.strip(" -/:,+")
     return text.strip()
 

@@ -7,6 +7,8 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+import pytest
+
 from mylib.transforms import normalize_name
 
 
@@ -33,3 +35,16 @@ def test_noise_and_concentration_removal() -> None:
     res = normalize_name("Sample solution 10 mM")
     assert "solution" in res["flags"].get("noise", [])
     assert res["search_name"] == "sample"
+
+
+@pytest.mark.parametrize("connector", ["-", "/", "+", ":"])
+def test_spacing_compaction_after_flag_removal(connector: str) -> None:
+    """Removal of flagged tokens should not leave spaces around connectors."""
+
+    res = normalize_name(f"a FITC {connector} b")
+    assert res["search_name"] == f"a{connector}b"
+
+
+def test_repeated_connector_collapses() -> None:
+    res = normalize_name("a - biotin - b")
+    assert res["search_name"] == "a-b"
