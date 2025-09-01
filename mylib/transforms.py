@@ -288,9 +288,17 @@ def normalize_name(name: str) -> Dict[str, object]:
     text = _cleanup(text)
     category, peptide_info = _detect_peptide(text)
 
+    status = ""
+    flag_empty_after_clean = False
     if not text:
         # Fall back to the base-clean string and ensure it is fully cleaned
         text = _cleanup(base_clean)
+        if not text:
+            text = _unicode_normalize(name)
+        status = "empty_after_clean"
+        flag_empty_after_clean = True
+        logger.warning("Name empty after cleaning; using fallback: %r", name)
+
 
     normalized_name = text.lower()
     search_name = normalized_name
@@ -304,10 +312,16 @@ def normalize_name(name: str) -> Dict[str, object]:
         "peptide_info": peptide_info,
         "flags": flags,
         "removed_tokens_flat": removed_tokens_flat,
+
+        "status": status,
+
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
+
+        "flag_empty_after_clean": flag_empty_after_clean,
+
     }
     return result
