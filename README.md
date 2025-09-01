@@ -61,11 +61,17 @@ Output includes columns:
 - `category`
 - `peptide_info`
 - `flags`
+- `removed_tokens_flat`
 - `flag_isotope`
 - `flag_fluorophore`
 - `flag_biotin`
 - `flag_salt`
 - `flag_hydrate`
+
+Salts and mineral acids such as hydrochloride, HCl, HBr, HNO3 or H2SO4 are
+removed from the normalized name and logged under `flags.salt`. Flattened
+tokens are also provided in `removed_tokens_flat` using a
+`<flag>:<token>|<flag>:<token>` format.
 
 ## License
 
