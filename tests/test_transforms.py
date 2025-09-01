@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
 import pytest
 
 from mylib.transforms import normalize_name
@@ -29,6 +30,7 @@ def test_sequence_detection() -> None:
     res = normalize_name("Ala-Gly-Ser")
     assert res["category"] == "peptide"
     assert res["peptide_info"]["type"] == "sequence_like"
+
 
 
 

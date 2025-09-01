@@ -50,6 +50,7 @@ def read_input_csv(
 
     path = Path(path)
     logger.debug("Reading input CSV from %s", path)
+
     try:
         df = pd.read_csv(path, sep=sep, encoding=encoding)
         # Heuristic: if the index is not a simple RangeIndex or extra columns
@@ -71,6 +72,7 @@ def read_input_csv(
             logger.error(msg)
             raise ValueError(msg) from exc
         df = pd.DataFrame({"input_name": [line.strip() for line in lines[1:]]})
+
 
     missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing:

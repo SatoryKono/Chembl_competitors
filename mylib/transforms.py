@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
+
 # Tokens representing salts and mineral acids to strip early in processing
 SALT_TOKENS = [
     "hydrochloride",
@@ -84,9 +85,11 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
     ),
     "hydrate": re.compile(
         r"\b(" + "|".join(map(re.escape, HYDRATE_TOKENS)) + r")\b",
+
         re.IGNORECASE,
     ),
 }
+
 
 # Non-structural descriptor tokens to remove in two passes
 NOISE_WORDS = [
@@ -115,6 +118,7 @@ NOISE_REGEX = re.compile(
 
 STOPWORDS = {"in", "of", "and"}
 
+
 AA1 = set("ACDEFGHIKLMNPQRSTVWY")
 AA3 = {
     "Ala",
@@ -140,6 +144,7 @@ AA3 = {
 }
 
 
+
 def _flatten_flags(flags: Dict[str, List[str]]) -> str:
     """Flatten selected flag tokens into a pipe-delimited string."""
 
@@ -159,6 +164,7 @@ def _flatten_flags(flags: Dict[str, List[str]]) -> str:
     return "|".join(parts)
 
 
+
 def _unicode_normalize(text: str) -> str:
     """Apply Unicode normalization and basic whitespace fixes."""
 
@@ -171,6 +177,7 @@ def _unicode_normalize(text: str) -> str:
 
 
 def _fix_spacing(text: str) -> str:
+
     """Normalize spacing around punctuation and decimals.
 
     In addition to compacting spaces around ``-``, ``/``, ``:``, and ``+``,
@@ -189,6 +196,7 @@ def _fix_spacing(text: str) -> str:
 
 
 
+
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
     pattern = re.compile(
         r"\b\d+(?:\.\d+)?\s*(?:mM|M|uM|µM|nM|pM|%|mg/mL|mg\/mL|g/mL|mg|g|mL)\b",
@@ -201,6 +209,15 @@ def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
     return text
 
 
+def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
+    pattern = re.compile(r"(\([^)]*\)|\[[^]]*\])")
+    matches = pattern.findall(text)
+    if matches:
+        flags.setdefault("parenthetical", []).extend(matches)
+        text = pattern.sub(" ", text)
+    return text
+
+
 def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     pattern = PATTERNS[key]
     matches = pattern.findall(text)
@@ -208,6 +225,7 @@ def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
         flags.setdefault(key, []).extend(matches if isinstance(matches, list) else [matches])
         text = pattern.sub(" ", text)
     return text
+
 
 
 def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
@@ -246,6 +264,7 @@ def _cleanup(text: str) -> str:
     # Consolidate repeated connectors that may result from removals
     text = re.sub(r"([-/:+]){2,}", r"\1", text)
     # Drop leading/trailing punctuation and whitespace
+
     text = text.strip(" -/:,+")
     return text.strip()
 
@@ -254,6 +273,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     """Detect peptide-like strings and return category and info."""
 
     lowered = text.lower()
+
 
 
     # polymer-style notation: poly-Glu:Tyr, poly (Glu, Tyr), poly Glu Tyr
@@ -301,6 +321,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     Returns
     -------
     dict
+
         Dictionary with normalized fields. By default ``search_name`` equals
         ``normalized_name``; if they differ an explanatory string is stored in
         ``search_override_reason``.
@@ -311,6 +332,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     text = _fix_spacing(text)
     base_clean = text  # for fallback
 
+
     # Strip fluorophore labels before any other processing to avoid misclassifying
     # numeric components as concentrations or noise.
     text = _detect_and_remove(text, "fluorophore", flags)
@@ -320,8 +342,10 @@ def normalize_name(name: str) -> Dict[str, object]:
         text = _detect_and_remove(text, key, flags)
     text = _remove_noise_descriptors(text, flags)
 
+
     text = _cleanup(text)
     category, peptide_info = _detect_peptide(text)
+
 
     status = ""
     flag_empty_after_clean = False
@@ -350,6 +374,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     search_name = normalized_name
     removed_tokens_flat = _flatten_flags(flags)
 
+
     result = {
         "normalized_name": normalized_name,
         "search_name": search_name,
@@ -359,11 +384,13 @@ def normalize_name(name: str) -> Dict[str, object]:
         "flags": flags,
         "removed_tokens_flat": removed_tokens_flat,
         "status": status,
+
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
+
         "flag_empty_after_clean": flag_empty_after_clean,
     }
     return result

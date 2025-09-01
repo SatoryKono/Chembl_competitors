@@ -8,9 +8,11 @@ This project provides utilities to preprocess and normalize chemical names in bu
 
 
 
+
 During normalization the library compacts spacing around punctuation
 (`-`, `/`, `:`, `+`, commas, and decimals) so artifacts such as `8 - oh dpat`
 become `8-oh dpat`.
+
 
 
 ```bash
@@ -37,9 +39,11 @@ python main.py --input examples1.csv --output out.csv
 - `--encoding`: file encoding (default `utf-8`).
 - `--log-level`: logging level.
 
+
 If the input file contains unescaped commas within chemical names, the loader
 falls back to a line-by-line parser. Ensure the first line is the header
 `input_name` and each subsequent line contains a single name.
+
 
 ## Development
 
@@ -67,17 +71,20 @@ biotinylated peptide
 Output includes columns:
 - `normalized_name`
 - `search_name`
+
 - `search_override_reason`
 - `category`
 - `peptide_info`
 - `flags`
 - `removed_tokens_flat`
 - `status`
+
 - `flag_isotope`
 - `flag_fluorophore`
 - `flag_biotin`
 - `flag_salt`
 - `flag_hydrate`
+
 - `flag_empty_after_clean`
 
 Isotopic labels such as `[3H]`, `14C`, `d5`, or `U-13C` are removed from the
@@ -118,6 +125,7 @@ the output sets `category = peptide` and populates `peptide_info` with the
 peptide type and, for polymer forms, the normalized composition. Generic
 materials like "polymer support resin" are not misclassified as peptides
 because amino-acid signatures are required.
+
 
 
 ## License
