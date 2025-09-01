@@ -7,6 +7,7 @@ This project provides utilities to preprocess and normalize chemical names in bu
 
 
 
+
 During normalization the library compacts spacing around punctuation
 (`-`, `/`, `:`, `+`, commas, and decimals) so artifacts such as `8 - oh dpat`
 become `8-oh dpat`.
@@ -108,6 +109,7 @@ early in the pipeline and logged under `flags.fluorophore` so that base
 chemical names remain intact.
 
 
+
 Peptides are detected via several heuristics: polymer-style prefixes like
 `poly-Glu:Tyr`, explicit terms such as `peptide` or `polypeptide`, and
 sequences of one- or three-letter amino-acid codes (optionally bearing
@@ -116,6 +118,7 @@ the output sets `category = peptide` and populates `peptide_info` with the
 peptide type and, for polymer forms, the normalized composition. Generic
 materials like "polymer support resin" are not misclassified as peptides
 because amino-acid signatures are required.
+
 
 ## License
 

@@ -31,6 +31,7 @@ def test_sequence_detection() -> None:
     assert res["peptide_info"]["type"] == "sequence_like"
 
 
+
 def test_protective_group_sequence() -> None:
     """Sequences with protective termini are still classified as peptides."""
 
@@ -85,6 +86,7 @@ def test_spacing_for_comma_and_decimal() -> None:
 
     res = normalize_name("N , N-dimethyl 1 . 5")
     assert res["search_name"] == "n,n-dimethyl 1.5"
+
 
 
 
@@ -180,6 +182,7 @@ def test_expanded_fluorophore_tokens(text: str, expected: str, token: str) -> No
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("fluorophore") == [token]
+
 
 @pytest.mark.parametrize(
     "text, composition",
