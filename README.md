@@ -4,6 +4,14 @@ This project provides utilities to preprocess and normalize chemical names in bu
 
 ## Installation
 
+
+
+
+During normalization the library compacts spacing around punctuation
+(`-`, `/`, `:`, `+`, commas, and decimals) so artifacts such as `8 - oh dpat`
+become `8-oh dpat`.
+
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -90,6 +98,7 @@ to a minimally cleaned version of the original text. In such cases the output
 includes `status = empty_after_clean` and sets the boolean indicator
 `flag_empty_after_clean` to `True` so these rows can be reviewed manually.
 
+
 `search_name` always matches `normalized_name` unless a documented override
 occurs. The reason for any override is recorded in `search_override_reason`.
 
@@ -97,6 +106,7 @@ Fluorophore labels such as **Alexa Fluor**, **HiLyte Fluor**, **DyLight**,
 **CF** dye series, **Janelia Fluor**, or **BODIPY** families are stripped
 early in the pipeline and logged under `flags.fluorophore` so that base
 chemical names remain intact.
+
 
 Peptides are detected via several heuristics: polymer-style prefixes like
 `poly-Glu:Tyr`, explicit terms such as `peptide` or `polypeptide`, and

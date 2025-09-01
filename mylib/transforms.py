@@ -171,9 +171,23 @@ def _unicode_normalize(text: str) -> str:
 
 
 def _fix_spacing(text: str) -> str:
-    """Remove spaces around punctuation like '-', '/', ':', '+'."""
 
-    return re.sub(r"\s*([-/:+])\s*", r"\1", text)
+
+    """Normalize spacing around punctuation and decimals.
+
+    In addition to compacting spaces around ``-``, ``/``, ``:``, and ``+``,
+    this function also removes extraneous spaces surrounding commas and
+    periods. Decimal numbers such as ``1 . 5`` are collapsed to ``1.5``.
+    """
+
+    # Compact common connector characters
+    text = re.sub(r"\s*([-/:+,])\s*", r"\1", text)
+    # Remove spaces around periods, including decimal numbers
+    text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
+    text = re.sub(r"\s*\.\s*", ".", text)
+    return text
+
+
 
 
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
@@ -271,6 +285,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
         if all(
             t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t
         ):
+
             return "peptide", {"type": "sequence_like"}
     return "small_molecule", {}
 
@@ -307,18 +322,27 @@ def normalize_name(name: str) -> Dict[str, object]:
 
     text = _cleanup(text)
     category, peptide_info = _detect_peptide(text)
+
     status = ""
     flag_empty_after_clean = False
     if not text:
         # Fall back to the base-clean string and ensure it is fully cleaned
         text = _cleanup(base_clean)
         if not text:
-            text = _unicode_normalize(name)
+
+            # As a last resort, minimally normalize the original text
+            text = _cleanup(_unicode_normalize(name))
+
+
         status = "empty_after_clean"
         flag_empty_after_clean = True
         logger.warning("Name empty after cleaning; using fallback: %r", name)
 
-    normalized_name = text.lower()
+
+
+    # Ensure spacing is compact after any late fallbacks
+    normalized_name = _fix_spacing(text).lower()
+
     search_name = normalized_name
     removed_tokens_flat = _flatten_flags(flags)
 

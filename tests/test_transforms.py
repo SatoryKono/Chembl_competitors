@@ -39,6 +39,7 @@ def test_protective_group_sequence() -> None:
     assert res["peptide_info"]["type"] == "sequence_like"
 
 
+
 def test_noise_and_concentration_removal() -> None:
     res = normalize_name("Sample solution 10 mM")
     assert "solution" in res["flags"].get("noise", [])
@@ -75,6 +76,17 @@ def test_spacing_compaction_after_flag_removal(connector: str) -> None:
 def test_repeated_connector_collapses() -> None:
     res = normalize_name("a - biotin - b")
     assert res["search_name"] == "a-b"
+
+
+
+
+def test_spacing_for_comma_and_decimal() -> None:
+    """Spaces around commas and decimals are compacted."""
+
+    res = normalize_name("N , N-dimethyl 1 . 5")
+    assert res["search_name"] == "n,n-dimethyl 1.5"
+
+
 
 
 def test_salt_tokens_removed_and_logged() -> None:
@@ -186,3 +198,4 @@ def test_poly_peptide_detection(text: str, composition: str) -> None:
 def test_polymer_non_peptide() -> None:
     res = normalize_name("polymer support resin")
     assert res["category"] == "small_molecule"
+
