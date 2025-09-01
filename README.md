@@ -67,6 +67,9 @@ Output includes columns:
 - `flag_salt`
 - `flag_hydrate`
 
+Salts and mineral acids such as hydrochloride, HCl, HBr, HNO3 or H2SO4 are
+removed from the normalized name and logged under `flags.salt`.
+
 ## License
 
 MIT

@@ -9,6 +9,29 @@ from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
+# Tokens representing salts and mineral acids to strip early in processing
+SALT_TOKENS = [
+    "hydrochloride",
+    "phosphate",
+    "mesylate",
+    "citrate",
+    "tartrate",
+    "acetate",
+    "sulfate",
+    "nitrate",
+    "maleate",
+    "fumarate",
+    "oxalate",
+    "sodium",
+    "potassium",
+    "calcium",
+    "lithium",
+    "HCl",
+    "HBr",
+    "HNO3",
+    "H2SO4",
+]
+
 # Regex patterns for various flags
 PATTERNS: Dict[str, re.Pattern[str]] = {
     "fluorophore": re.compile(
@@ -21,7 +44,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
     ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
     "salt": re.compile(
-        r"\b(hydrochloride|phosphate|mesylate|citrate|tartrate|acetate|sulfate|nitrate|maleate|fumarate|oxalate|sodium|potassium|calcium|lithium)\b",
+        r"\b(" + "|".join(map(re.escape, SALT_TOKENS)) + r")\b",
         re.IGNORECASE,
     ),
     "hydrate": re.compile(r"\b(?:mono|di|tri|tetra|penta)?hydrate|anhydrous\b", re.IGNORECASE),
@@ -157,7 +180,8 @@ def normalize_name(name: str) -> Dict[str, object]:
     base_clean = text  # for fallback
 
     text = _remove_concentrations(text, flags)
-    for key in ["isotope", "fluorophore", "biotin", "salt", "hydrate"]:
+    # Strip salts before other markers to prevent them from being hidden
+    for key in ["salt", "isotope", "fluorophore", "biotin", "hydrate"]:
         text = _detect_and_remove(text, key, flags)
     text = _remove_parenthetical(text, flags)
     text = _detect_and_remove(text, "noise", flags)

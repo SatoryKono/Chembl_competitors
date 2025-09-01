@@ -48,3 +48,22 @@ def test_spacing_compaction_after_flag_removal(connector: str) -> None:
 def test_repeated_connector_collapses() -> None:
     res = normalize_name("a - biotin - b")
     assert res["search_name"] == "a-b"
+
+
+def test_salt_tokens_removed_and_logged() -> None:
+    res = normalize_name("histamine hydrochloride")
+    assert res["search_name"] == "histamine"
+    assert res["flags"].get("salt") == ["hydrochloride"]
+
+
+def test_mineral_acid_tokens() -> None:
+    res = normalize_name("dextromethorphan HBr")
+    assert res["search_name"] == "dextromethorphan"
+    assert res["flags"].get("salt") == ["HBr"]
+
+
+def test_salt_and_hydrate_combination() -> None:
+    res = normalize_name("metformin hydrochloride monohydrate")
+    assert res["search_name"] == "metformin"
+    assert res["flags"].get("salt") == ["hydrochloride"]
+    assert res["flags"].get("hydrate") == ["monohydrate"]
