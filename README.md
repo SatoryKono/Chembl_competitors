@@ -2,6 +2,81 @@
 
 This project provides utilities to preprocess and normalize chemical names in bulk.
 
+## PubChem Metadata Lookup
+
+The repository also ships a helper script to annotate compound names with
+PubChem metadata. For each value in a column named ``search_name`` the tool
+attempts an exact name query against the PubChem PUG REST service. If no
+record is found the lookup falls back to a broader synonym search. When a
+single CID is resolved the following fields are retrieved:
+
+* ``pubchem_cid``
+* ``canonical_smiles``
+* ``inchi``
+* ``inchi_key``
+* ``molecular_formula``
+* ``molecular_weight``
+* ``iupac_name``
+* ``synonyms`` – pipe-separated list
+
+If multiple or no matches are found, or if a name has fewer than five
+characters, the corresponding sentinel value (``"multiply"``, ``"unknown`` or
+``"compound name is too short"``) is returned for all PubChem columns.
+
+Requests are performed using a session configured with automatic retries so
+that transient network failures (e.g., connection resets or HTTP 5xx errors)
+do not abort the entire lookup.
+
+### Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+Optional quality tools:
+
+```bash
+pip install black ruff mypy pytest
+```
+
+### Usage
+
+```bash
+python main.py --input examples1.csv --output out.csv
+```
+
+Additional arguments:
+
+- ``--sep`` – CSV delimiter (default `,`).
+- ``--encoding`` – file encoding (default `utf-8`).
+- ``--log-level`` – logging level.
+
+### Example
+
+Input ``examples1.csv``:
+
+```csv
+search_name
+aspirin
+water
+NaCl
+```
+
+Run:
+
+```bash
+python main.py --input examples1.csv --output out.csv
+```
+
+Output ``out.csv``:
+
+```csv
+search_name,pubchem_cid,canonical_smiles,inchi,inchi_key,molecular_formula,molecular_weight,iupac_name,synonyms
+aspirin,2244,SMILES,InChI,KEY,C9H8O4,180.16,Name,aspirin|acetylsalicylic acid
+water,962,,,H2O,18.02,,water
+NaCl,compound name is too short,compound name is too short,compound name is too short,compound name is too short,compound name is too short,compound name is too short,compound name is too short,compound name is too short
+```
+
 ## Installation
 
 
