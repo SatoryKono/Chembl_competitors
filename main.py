@@ -39,7 +39,6 @@ def main() -> None:
     # Serialize complex columns as JSON strings for CSV compatibility
     out_df["flags"] = out_df["flags"].apply(json.dumps)
     out_df["peptide_info"] = out_df["peptide_info"].apply(json.dumps)
-
     out_df["oligo_info"] = out_df["oligo_info"].apply(json.dumps)
     out_df["small_molecule_info"] = out_df["small_molecule_info"].apply(json.dumps)
 

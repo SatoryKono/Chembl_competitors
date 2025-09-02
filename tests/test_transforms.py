@@ -164,6 +164,42 @@ def test_removed_tokens_flat() -> None:
     )
 
 
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("] dslet", "dslet"),
+        ("[[ampa", "ampa"),
+        ("[3H]]-5-ct", "5-ct"),
+        ("[ [ 3h ] - progesterone", "progesterone"),
+    ],
+)
+def test_hanging_brackets_removed(raw: str, expected: str) -> None:
+    res = normalize_name(raw)
+    assert res["search_name"] == expected
+
+
+@pytest.mark.parametrize("raw", ["9", "14", "1a", "2B", "3 c"])
+def test_short_garbage_flag(raw: str) -> None:
+    res = normalize_name(raw)
+    assert res["status"] == "empty_after_clean"
+    assert res["flag_empty_after_clean"] is True
+
+
+
+@pytest.mark.parametrize(
+    "raw, flag",
+    [
+        ("FAM-lys", "FAM"),
+        ("lys-EDANS", "EDANS"),
+    ],
+)
+def test_single_amino_acid_is_small_molecule(raw: str, flag: str) -> None:
+    res = normalize_name(raw)
+    assert res["category"] == "small_molecule"
+    assert flag in res["flags"].get("fluorophore", [])
+
+
 def test_removed_tokens_flat_empty() -> None:
     res = normalize_name("aspirin")
     assert res["removed_tokens_flat"] == ""
@@ -194,7 +230,9 @@ def test_search_name_defaults_to_normalized() -> None:
         ("14C caffeine", "caffeine", ["14C"]),
         ("[14C]caffeine", "caffeine", ["[14C]"]),
         ("125I-insulin", "insulin", ["125I"]),
-        ("[125 I] insulin", "insulin", ["[125 I]"]),
+
+        ("[125 I] insulin", "insulin", ["[125I]"]),
+
         ("18F-FDG", "fdg", ["18F"]),
         ("[18F]fluorodeoxyglucose", "fluorodeoxyglucose", ["[18F]"]),
         ("2H water", "water", ["2H"]),
@@ -205,8 +243,14 @@ def test_search_name_defaults_to_normalized() -> None:
         ("d3-deuterated phenol", "phenol", ["d3", "deuterated"]),
         ("[3H][14C] compound", "compound", ["[3H]", "[14C]"]),
         ("d5-125I-amphetamine", "amphetamine", ["d5", "125I"]),
-        ("U13C-15N-lysine", "lysine", ["U13C", "15N"]),
+
+        ("U13C-15N-lysine", "lysine", ["U-13C", "15N"]),
         ("d5 U-13C [3H] sample", "sample", ["d5", "U-13C", "[3H]"]),
+        ("[i125]-tyrosine", "tyrosine", ["[125I]"]),
+        ("[125-i]tyrosine", "tyrosine", ["[125I]"]),
+        ("i-125-tyrosine", "tyrosine", ["125I"]),
+        ("iodobenzene[1251]", "iodobenzene", ["[125I]"]),
+
     ],
 )
 def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
@@ -258,6 +302,40 @@ def test_polymer_non_peptide() -> None:
     res = normalize_name("polymer support resin")
     assert res["category"] == "small_molecule"
 
+
+@pytest.mark.parametrize(
+    "text, subtype",
+    [
+        ("10-acetyl-3,7-dihydroxyphenoxazin", "dye"),
+        ("acetyl CoA", "cofactor"),
+        ("33P-gammaATP", "nucleotide"),
+        ("2-mesATP", "nucleotide"),
+        ("2-mesADP", "nucleotide"),
+        ("acetyl choline", "choline"),
+        ("4-mu-glcNAc", "fluorogenic_glycoside"),
+        (
+            "4-methylumbelliferyl N-acetyl-beta-d-glucosaminide",
+            "fluorogenic_glycoside",
+        ),
+    ],
+)
+def test_small_molecule_guards(text: str, subtype: str) -> None:
+    res = normalize_name(text)
+    assert res["category"] == "small_molecule"
+    assert res["small_molecule_info"].get("subtype") == subtype
+
+
+def test_isotope_small_molecule() -> None:
+    text = "[3H]-pyrrolidine-2-carboxylic acid biphenyl-2-ylamide"
+    res = normalize_name(text)
+    assert res["category"] == "small_molecule"
+    assert res["flags"].get("isotope") == ["[3H]"]
+
+
+def test_nucleotide_not_peptide() -> None:
+    res = normalize_name("ATP")
+    assert res["category"] == "small_molecule"
+    assert res["small_molecule_info"].get("subtype") == "nucleotide"
 
 
 @pytest.mark.parametrize(
