@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-
 PUBCHEM_NAME_URL = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{}/cids/TXT"
 # JSON endpoints for richer metadata
 PUBCHEM_PROPERTY_URL = (
@@ -272,7 +271,6 @@ def fetch_pubchem_record(
 
 
 def annotate_pubchem_info(
-
     df: pd.DataFrame,
     *,
     name_column: str = "search_name",
