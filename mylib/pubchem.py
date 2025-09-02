@@ -116,7 +116,6 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
         if response.status_code in {400, 404}:
             # Fallback: retry without the exact-match constraint which may
             # yield results for valid synonyms not recognised as exact names.
-
             logger.debug(
                 "Exact lookup failed for %s, retrying without name_type", name
             )
@@ -124,7 +123,6 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
     except requests.RequestException:
         logger.exception("Failed to query PubChem for %s", name)
         return "unknown"
-
 
     # PubChem returns HTTP 404 or 400 when no compound matches the query.
     if response.status_code in {400, 404}:
@@ -206,7 +204,6 @@ def fetch_pubchem_record(
                 prop_json.get("PropertyTable", {})
                 .get("Properties", [{}])[0]
             )
-
             prop_data = {
                 k: str(props.get(k, ""))
                 for k in [
@@ -228,7 +225,6 @@ def fetch_pubchem_record(
     except Exception:
         logger.exception("Unexpected error fetching properties for CID %s", cid)
         prop_data = {}
-
 
     # ------------------------------------------------------------------
     # Fetch synonyms
@@ -256,7 +252,6 @@ def fetch_pubchem_record(
     except Exception:
         logger.exception("Unexpected error fetching synonyms for CID %s", cid)
         synonyms = ""
-
 
     return {
         "pubchem_cid": cid,

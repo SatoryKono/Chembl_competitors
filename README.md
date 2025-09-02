@@ -23,6 +23,10 @@ If multiple or no matches are found, or if a name has fewer than five
 characters, the corresponding sentinel value (``"multiply"``, ``"unknown`` or
 ``"compound name is too short"``) is returned for all PubChem columns.
 
+Requests are performed using a session configured with automatic retries so
+that transient network failures (e.g., connection resets or HTTP 5xx errors)
+do not abort the entire lookup.
+
 ### Installation
 
 ```bash

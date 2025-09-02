@@ -61,17 +61,14 @@ def test_fetch_pubchem_cid_multiple(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_fetch_pubchem_cid_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
-
+    sess = requests.Session()
     monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse(text="", status_code=404))
-
     assert fetch_pubchem_cid("unknowncompound", session=sess) == "unknown"
 
 
 def test_fetch_pubchem_cid_bad_request(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
-
     monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse(text="", status_code=400))
-
     assert fetch_pubchem_cid("badname", session=sess) == "unknown"
 
 
@@ -80,13 +77,11 @@ def test_fetch_pubchem_cid_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
     responses = [DummyResponse(text="", status_code=404), DummyResponse(text="789\n")]
 
-
     def fake_get(*args, **kwargs):
         return responses.pop(0)
 
     monkeypatch.setattr(sess, "get", fake_get)
     assert fetch_pubchem_cid("almorexant", session=sess) == "789"
-
 
 
 def test_fetch_pubchem_cid_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -98,7 +93,6 @@ def test_fetch_pubchem_cid_connection_error(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(sess, "get", raise_error)
     assert fetch_pubchem_cid("aspirin", session=sess) == "unknown"
-
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +282,6 @@ def test_fetch_pubchem_record_synonym_exception(
         if isinstance(resp, Exception):
             raise resp
         return resp
-
 
     monkeypatch.setattr(sess, "get", fake_get)
 
