@@ -2,17 +2,26 @@
 
 This project provides utilities to preprocess and normalize chemical names in bulk.
 
-## PubChem CID Lookup
+## PubChem Metadata Lookup
 
 The repository also ships a helper script to annotate compound names with
-PubChem Compound IDs (CIDs). For each value in a column named
-``search_name`` the tool performs an exact name query against the PubChem
-PUG REST service and appends the result as ``pubchem_cid``:
+PubChem metadata. For each value in a column named ``search_name`` the tool
+attempts an exact name query against the PubChem PUG REST service. If no
+record is found the lookup falls back to a broader synonym search. When a
+single CID is resolved the following fields are retrieved:
 
-* Single CID → that numeric identifier.
-* No matches → ``"unknown"``.
-* Multiple matches → ``"multiply"``.
-* Names shorter than five characters → ``"compound name is too short"`` (no network request).
+* ``pubchem_cid``
+* ``canonical_smiles``
+* ``inchi``
+* ``inchi_key``
+* ``molecular_formula``
+* ``molecular_weight``
+* ``iupac_name``
+* ``synonyms`` – pipe-separated list
+
+If multiple or no matches are found, or if a name has fewer than five
+characters, the corresponding sentinel value (``"multiply"``, ``"unknown`` or
+``"compound name is too short"``) is returned for all PubChem columns.
 
 ### Installation
 
@@ -58,10 +67,10 @@ python main.py --input examples1.csv --output out.csv
 Output ``out.csv``:
 
 ```csv
-search_name,pubchem_cid
-aspirin,2244
-water,962
-NaCl,compound name is too short
+search_name,pubchem_cid,canonical_smiles,inchi,inchi_key,molecular_formula,molecular_weight,iupac_name,synonyms
+aspirin,2244,SMILES,InChI,KEY,C9H8O4,180.16,Name,aspirin|acetylsalicylic acid
+water,962,,,H2O,18.02,,water
+NaCl,compound name is too short,compound name is too short,compound name is too short,compound name is too short,compound name is too short,compound name is too short,compound name is too short,compound name is too short
 ```
 
 ## Installation
