@@ -11,8 +11,8 @@ import requests
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from mylib import annotate_pubchem_cids
-from mylib.pubchem import fetch_pubchem_cid
+from mylib import annotate_pubchem_info
+from mylib.pubchem import fetch_pubchem_cid, fetch_pubchem_record
 
 
 class DummyResponse:
@@ -79,15 +79,60 @@ def test_fetch_pubchem_cid_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# annotate_pubchem_cids tests
+# fetch_pubchem_record tests
 # ---------------------------------------------------------------------------
 
-def test_annotate_pubchem_cids(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_pubchem_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    sess = requests.Session()
+
+    # Stub CID resolution
+    monkeypatch.setattr("mylib.pubchem.fetch_pubchem_cid", lambda *a, **k: "2244")
+
+    prop_text = (
+        "CID\tCanonicalSMILES\tInChI\tInChIKey\tMolecularFormula\tMolecularWeight\tIUPACName\n"
+        "2244\tSMILES\tInChI\tKEY\tC9H8O4\t180.16\tName\n"
+    )
+    syn_text = "2244\naspirin\nacetylsalicylic acid\n"  # first line numeric removed
+
+    responses = [DummyResponse(prop_text), DummyResponse(syn_text)]
+
+    def fake_get(url: str, *a, **k):
+        return responses.pop(0)
+
+    monkeypatch.setattr(sess, "get", fake_get)
+
+    rec = fetch_pubchem_record("aspirin", session=sess)
+    assert rec["pubchem_cid"] == "2244"
+    assert rec["canonical_smiles"] == "SMILES"
+    assert rec["inchi"] == "InChI"
+    assert rec["inchi_key"] == "KEY"
+    assert rec["molecular_formula"] == "C9H8O4"
+    assert rec["molecular_weight"] == "180.16"
+    assert rec["iupac_name"] == "Name"
+    assert rec["synonyms"] == "aspirin|acetylsalicylic acid"
+
+
+# ---------------------------------------------------------------------------
+# annotate_pubchem_info tests
+# ---------------------------------------------------------------------------
+
+def test_annotate_pubchem_info(monkeypatch: pytest.MonkeyPatch) -> None:
     df = pd.DataFrame({"search_name": ["aspirin", "abcde"]})
 
-    def fake_fetch(name: str, session: requests.Session) -> str:
-        return "111" if name == "aspirin" else "222"
+    def fake_fetch(name: str, session: requests.Session) -> dict[str, str]:
+        base = {
+            "pubchem_cid": "111" if name == "aspirin" else "222",
+            "canonical_smiles": "S" + name,
+            "inchi": "I" + name,
+            "inchi_key": "K" + name,
+            "molecular_formula": "F" + name,
+            "molecular_weight": "W" + name,
+            "iupac_name": "U" + name,
+            "synonyms": f"{name}|{name}2",
+        }
+        return base
 
-    monkeypatch.setattr("mylib.pubchem.fetch_pubchem_cid", fake_fetch)
-    out_df = annotate_pubchem_cids(df, session=requests.Session())
+    monkeypatch.setattr("mylib.pubchem.fetch_pubchem_record", fake_fetch)
+    out_df = annotate_pubchem_info(df, session=requests.Session())
     assert out_df["pubchem_cid"].tolist() == ["111", "222"]
+    assert out_df["synonyms"].iloc[0] == "aspirin|aspirin2"

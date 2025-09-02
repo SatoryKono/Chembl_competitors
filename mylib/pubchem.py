@@ -9,7 +9,7 @@ false negatives for valid synonyms.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Dict, Optional
 from urllib.parse import quote
 
 import requests
@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 PUBCHEM_NAME_URL = (
     "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{}/cids/TXT"
+)
+PUBCHEM_PROPERTY_URL = (
+    "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{}/property/"
+    "CanonicalSMILES,InChI,InChIKey,MolecularFormula,MolecularWeight,IUPACName/TXT"
+)
+PUBCHEM_SYNONYM_URL = (
+    "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{}/synonyms/TXT"
 )
 
 
@@ -93,10 +100,88 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
     return lines[0]
 
 
-def annotate_pubchem_cids(
+def fetch_pubchem_record(name: str, *, session: Optional[requests.Session] = None) -> Dict[str, str]:
+    """Return metadata for ``name`` from PubChem.
+
+    The lookup first resolves ``name`` to a CID via :func:`fetch_pubchem_cid` and
+    subsequently queries the compound's properties and synonyms. The following
+    keys are returned:
+
+    ``pubchem_cid``, ``canonical_smiles``, ``inchi``, ``inchi_key``,
+    ``molecular_formula``, ``molecular_weight``, ``iupac_name``, ``synonyms``.
+
+    If the CID lookup yields one of the sentinel messages (``"unknown"``,
+    ``"multiply"``, ``"compound name is too short"``) that value is propagated
+    to all fields.
+
+    Parameters
+    ----------
+    name:
+        Compound name to query.
+    session:
+        Optional :class:`requests.Session` for connection pooling.
+
+    Returns
+    -------
+    dict
+        Mapping of field name to value as described above.
+    """
+
+    cid = fetch_pubchem_cid(name, session=session)
+    if not cid.isdigit():
+        # Propagate sentinel value across all fields
+        return {
+            "pubchem_cid": cid,
+            "canonical_smiles": cid,
+            "inchi": cid,
+            "inchi_key": cid,
+            "molecular_formula": cid,
+            "molecular_weight": cid,
+            "iupac_name": cid,
+            "synonyms": cid,
+        }
+
+    sess = session or requests.Session()
+
+    # ------------------------------------------------------------------
+    # Fetch compound properties
+    # ------------------------------------------------------------------
+    prop_resp = sess.get(PUBCHEM_PROPERTY_URL.format(cid), timeout=10)
+    prop_resp.raise_for_status()
+    prop_lines = [line.strip() for line in prop_resp.text.splitlines() if line.strip()]
+    headers: list[str] = []
+    values: list[str] = []
+    if len(prop_lines) >= 2:
+        headers = prop_lines[0].split("\t")
+        values = prop_lines[1].split("\t")
+    prop_data = dict(zip(headers, values))
+
+    # ------------------------------------------------------------------
+    # Fetch synonyms
+    # ------------------------------------------------------------------
+    syn_resp = sess.get(PUBCHEM_SYNONYM_URL.format(cid), timeout=10)
+    syn_resp.raise_for_status()
+    syn_lines = [line.strip() for line in syn_resp.text.splitlines() if line.strip()]
+    if syn_lines and syn_lines[0].isdigit():
+        syn_lines = syn_lines[1:]
+    synonyms = "|".join(syn_lines)
+
+    return {
+        "pubchem_cid": cid,
+        "canonical_smiles": prop_data.get("CanonicalSMILES", ""),
+        "inchi": prop_data.get("InChI", ""),
+        "inchi_key": prop_data.get("InChIKey", ""),
+        "molecular_formula": prop_data.get("MolecularFormula", ""),
+        "molecular_weight": prop_data.get("MolecularWeight", ""),
+        "iupac_name": prop_data.get("IUPACName", ""),
+        "synonyms": synonyms,
+    }
+
+
+def annotate_pubchem_info(
     df: pd.DataFrame, *, name_column: str = "search_name", session: Optional[requests.Session] = None
 ) -> pd.DataFrame:
-    """Annotate a DataFrame with PubChem CIDs.
+    """Annotate a DataFrame with PubChem metadata.
 
     Parameters
     ----------
@@ -110,14 +195,15 @@ def annotate_pubchem_cids(
     Returns
     -------
     pandas.DataFrame
-        Copy of ``df`` with an additional ``pubchem_cid`` column.
+        Copy of ``df`` with additional PubChem columns described in
+        :func:`fetch_pubchem_record`.
 
     Raises
     ------
     ValueError
         If ``name_column`` is missing from ``df``.
     requests.RequestException
-        Propagated from :func:`fetch_pubchem_cid` on network failures.
+        Propagated from the underlying network calls on failure.
     """
 
     if name_column not in df.columns:
@@ -126,7 +212,12 @@ def annotate_pubchem_cids(
         raise ValueError(msg)
 
     sess = session or requests.Session()
-    logger.debug("Annotating %d records with PubChem CIDs", len(df))
+    logger.debug("Annotating %d records with PubChem metadata", len(df))
     df = df.copy()
-    df["pubchem_cid"] = df[name_column].apply(lambda n: fetch_pubchem_cid(str(n), session=sess))
-    return df
+    info = df[name_column].apply(lambda n: fetch_pubchem_record(str(n), session=sess))
+    info_df = pd.DataFrame(list(info))
+    return pd.concat([df, info_df], axis=1)
+
+
+# Backwards compatibility ---------------------------------------------------
+annotate_pubchem_cids = annotate_pubchem_info
