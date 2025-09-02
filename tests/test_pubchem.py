@@ -66,7 +66,6 @@ def test_fetch_pubchem_cid_multiple(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_fetch_pubchem_cid_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
-    sess = requests.Session()
 
     monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse(text="", status_code=404))
 
@@ -84,8 +83,6 @@ def test_fetch_pubchem_cid_bad_request(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_fetch_pubchem_cid_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """The lookup falls back to a broader query when exact matching fails."""
     sess = requests.Session()
-
-
     responses = [DummyResponse(text="", status_code=404), DummyResponse(text="789\n")]
 
 
@@ -94,6 +91,19 @@ def test_fetch_pubchem_cid_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(sess, "get", fake_get)
     assert fetch_pubchem_cid("almorexant", session=sess) == "789"
+
+
+
+def test_fetch_pubchem_cid_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Network issues return 'unknown' rather than raising."""
+    sess = requests.Session()
+
+    def raise_error(*args, **kwargs):
+        raise requests.ConnectionError("boom")
+
+    monkeypatch.setattr(sess, "get", raise_error)
+    assert fetch_pubchem_cid("aspirin", session=sess) == "unknown"
+
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +161,6 @@ def test_fetch_pubchem_record(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec["molecular_weight"] == "180.16"
     assert rec["iupac_name"] == "Name"
     assert rec["synonyms"] == "aspirin|acetylsalicylic acid"
-
 
 
 def test_fetch_pubchem_record_handles_400(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,6 +228,78 @@ def test_fetch_pubchem_record_handles_synonym_400(
 
     def fake_get(url: str, *a, **k):
         return responses.pop(0)
+
+    monkeypatch.setattr(sess, "get", fake_get)
+
+    rec = fetch_pubchem_record("foo", session=sess)
+    assert rec["synonyms"] == ""
+
+
+def test_fetch_pubchem_record_property_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sess = requests.Session()
+
+    monkeypatch.setattr("mylib.pubchem.fetch_pubchem_cid", lambda *a, **k: "42")
+
+    syn_json = {
+        "InformationList": {
+            "Information": [{"CID": 42, "Synonym": ["a", "b"]}]
+        }
+    }
+
+    responses = [
+        requests.ConnectionError("boom"),
+        DummyResponse(json_data=syn_json),
+    ]
+
+    def fake_get(url: str, *a, **k):
+        resp = responses.pop(0)
+        if isinstance(resp, Exception):
+            raise resp
+        return resp
+
+    monkeypatch.setattr(sess, "get", fake_get)
+
+    rec = fetch_pubchem_record("foo", session=sess)
+    assert rec["canonical_smiles"] == ""
+    assert rec["synonyms"] == "a|b"
+
+
+def test_fetch_pubchem_record_synonym_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sess = requests.Session()
+
+    monkeypatch.setattr("mylib.pubchem.fetch_pubchem_cid", lambda *a, **k: "42")
+
+    prop_json = {
+        "PropertyTable": {
+            "Properties": [
+                {
+                    "CID": 42,
+                    "CanonicalSMILES": "S",
+                    "InChI": "I",
+                    "InChIKey": "K",
+                    "MolecularFormula": "F",
+                    "MolecularWeight": "W",
+                    "IUPACName": "U",
+                }
+            ]
+        }
+    }
+
+    responses = [
+        DummyResponse(json_data=prop_json),
+        requests.ConnectionError("boom"),
+    ]
+
+    def fake_get(url: str, *a, **k):
+        resp = responses.pop(0)
+        if isinstance(resp, Exception):
+            raise resp
+        return resp
+
 
     monkeypatch.setattr(sess, "get", fake_get)
 
