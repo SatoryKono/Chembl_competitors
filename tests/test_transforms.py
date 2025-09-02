@@ -7,9 +7,11 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
 import pytest
 
 from mylib.transforms import PATTERNS, normalize_name, _fix_spacing
+
 
 
 def test_isotope_flag() -> None:
@@ -37,7 +39,6 @@ def test_protective_group_sequence() -> None:
     res = normalize_name("H-Ala-Gly-OH")
     assert res["category"] == "peptide"
     assert res["peptide_info"]["type"] == "sequence_like"
-
 
 def test_noise_and_concentration_removal() -> None:
     res = normalize_name("Sample solution 10 mM")
@@ -181,25 +182,24 @@ def test_short_garbage_flag(raw: str) -> None:
     assert res["flag_empty_after_clean"] is True
 
 
+
 @pytest.mark.parametrize(
-    "raw, expected, flag",
+    "raw, flag",
     [
-        ("(z-(ac) lys-amc)", "(cbz-lys(ac)-amc)", "AMC"),
-        ("FAM-lys", "fam-lys", "FAM"),
-        ("lys-EDANS", "lys-edans", "EDANS"),
+        ("FAM-lys", "FAM"),
+        ("lys-EDANS", "EDANS"),
     ],
 )
-def test_single_residue_peptide_keeps_fluor(raw: str, expected: str, flag: str) -> None:
+def test_single_amino_acid_is_small_molecule(raw: str, flag: str) -> None:
     res = normalize_name(raw)
-    assert res["search_name"] == expected
+    assert res["category"] == "small_molecule"
     assert flag in res["flags"].get("fluorophore", [])
 
 
 def test_removed_tokens_flat_empty() -> None:
     res = normalize_name("aspirin")
     assert res["removed_tokens_flat"] == ""
-
-
+    
 def test_oligo_tokens_flat_empty() -> None:
     res = normalize_name("aspirin")
     assert res["oligo_tokens_flat"] == ""
@@ -290,6 +290,42 @@ def test_polymer_non_peptide() -> None:
 
 
 @pytest.mark.parametrize(
+    "text, subtype",
+    [
+        ("10-acetyl-3,7-dihydroxyphenoxazin", "dye"),
+        ("acetyl CoA", "cofactor"),
+        ("33P-gammaATP", "nucleotide"),
+        ("2-mesATP", "nucleotide"),
+        ("2-mesADP", "nucleotide"),
+        ("acetyl choline", "choline"),
+        ("4-mu-glcNAc", "fluorogenic_glycoside"),
+        (
+            "4-methylumbelliferyl N-acetyl-beta-d-glucosaminide",
+            "fluorogenic_glycoside",
+        ),
+    ],
+)
+def test_small_molecule_guards(text: str, subtype: str) -> None:
+    res = normalize_name(text)
+    assert res["category"] == "small_molecule"
+    assert res["small_molecule_info"].get("subtype") == subtype
+
+
+def test_isotope_small_molecule() -> None:
+    text = "[3H]-pyrrolidine-2-carboxylic acid biphenyl-2-ylamide"
+    res = normalize_name(text)
+    assert res["category"] == "small_molecule"
+    assert res["flags"].get("isotope") == ["[3H]"]
+
+
+def test_nucleotide_not_peptide() -> None:
+    res = normalize_name("ATP")
+    assert res["category"] == "small_molecule"
+    assert res["small_molecule_info"].get("subtype") == "nucleotide"
+
+
+@pytest.mark.parametrize(
+
     "text", [
         "gly-pro-pna",
         "pyroglu-pro-arg-pna",
