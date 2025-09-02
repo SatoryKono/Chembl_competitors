@@ -71,6 +71,8 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         """,
         re.IGNORECASE | re.VERBOSE,
     ),
+
+    
     "isotope": re.compile(
 
         r"""
@@ -85,13 +87,8 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
 (?!\w)                                                    # правая граница
 """,
 
-        re.IGNORECASE | re.VERBOSE,
+        re.IGNORECASE | re.VERBOSE),
 
-
-regexes = {
-    "isotope": re.compile(ISOTOPE_PATTERN, re.IGNORECASE | re.VERBOSE),
-}
-    ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
     "salt": re.compile(
         r"\b(" + "|".join(map(re.escape, SALT_TOKENS)) + r")\b",
