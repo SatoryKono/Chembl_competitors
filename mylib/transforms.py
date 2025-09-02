@@ -44,6 +44,18 @@ HYDRATE_TOKENS = [
 ]
 
 # Regex patterns for various flags
+ISOTOPE_PATTERN = r"""
+(?<!\w)
+(?:
+    \[\s*(?:3H|2H|D|T|13C|14C|15N|18F|32P|86Rb|125I)\s*\]
+  | (?:3H|2H|13C|14C|15N|18F|32P|86Rb|125I|D|T)
+  | d\d+
+  | U-?13C
+  | tritiated|deuterated
+)
+(?!\w)
+"""
+
 PATTERNS: Dict[str, re.Pattern[str]] = {
     "fluorophore": re.compile(
         r"""
@@ -71,27 +83,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         """,
         re.IGNORECASE | re.VERBOSE,
     ),
-    "isotope": re.compile(
-
-        r"""
-(?<!\w)                                         # левая граница (не буква/цифра/подчёркивание)
-(?:
-    \[\s*(?:3H|2H|D|T|13C|14C|15N|18F|32P|86Rb|125I)\s*\]  # [125I], [3H] и т.п.
-  | (?:3H|2H|13C|14C|15N|18F|32P|86Rb|125I|D|T)            # «голые» префиксы/символы
-  | d\d+                                                  # d5, d10 (деутерирование)
-  | U-?13C                                                # U13C или U-13C
-  | tritiated|deuterated                                  # слова
-)
-(?!\w)                                                    # правая граница
-""",
-
-        re.IGNORECASE | re.VERBOSE,
-
-
-regexes = {
     "isotope": re.compile(ISOTOPE_PATTERN, re.IGNORECASE | re.VERBOSE),
-}
-    ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
     "salt": re.compile(
         r"\b(" + "|".join(map(re.escape, SALT_TOKENS)) + r")\b",
