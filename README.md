@@ -6,8 +6,10 @@ This project provides utilities to preprocess and normalize chemical names in bu
 
 The repository also ships a helper script to annotate compound names with
 PubChem Compound IDs (CIDs). For each value in a column named
-``search_name`` the tool performs an exact name query against the PubChem
-PUG REST service and appends the result as ``pubchem_cid``:
+``search_name`` the tool attempts an exact name query against the PubChem
+PUG REST service. If no record is found the lookup falls back to a broader
+synonym search. The resulting CID (or a status message) is appended as
+``pubchem_cid``:
 
 * Single CID → that numeric identifier.
 * No matches → ``"unknown"``.

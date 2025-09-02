@@ -1,15 +1,16 @@
 """Utilities for querying PubChem by compound name.
 
 This module exposes functions to look up PubChem Compound IDs (CIDs)
-using the PUG REST API. An exact name match is performed according to
-project requirements.
+using the PUG REST API. An exact name match is attempted first; if no
+result is returned the function falls back to a broader search to avoid
+false negatives for valid synonyms.
 """
 
 from __future__ import annotations
 
 import logging
 from typing import Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote
 
 import requests
 import pandas as pd
@@ -64,18 +65,21 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
         return "compound name is too short"
 
     sess = session or requests.Session()
-    url = PUBCHEM_NAME_URL.format(quote_plus(name))
-    params = {"name_type": "exact"}
+    url = PUBCHEM_NAME_URL.format(quote(name))
     logger.debug("Requesting PubChem CID for %s", name)
     try:
-        response = sess.get(url, params=params, timeout=10)
+        # First attempt an exact name match.
+        response = sess.get(url, params={"name_type": "exact"}, timeout=10)
+        if response.status_code in {400, 404}:
+            # Fallback: retry without the exact-match constraint which may
+            # yield results for valid synonyms not recognised as exact names.
+            logger.debug("Exact lookup failed for %s, retrying without name_type", name)
+            response = sess.get(url, timeout=10)
     except requests.RequestException:
         logger.exception("Failed to query PubChem for %s", name)
         raise
 
-    # PubChem returns HTTP 404 or 400 for unknown names. Both should
-    # map to our "unknown" sentinel rather than raising an exception
-    # for the user.
+    # PubChem returns HTTP 404 or 400 when no compound matches the query.
     if response.status_code in {400, 404}:
         logger.info("No PubChem entry found for %s", name)
         return "unknown"

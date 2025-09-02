@@ -65,6 +65,19 @@ def test_fetch_pubchem_cid_bad_request(monkeypatch: pytest.MonkeyPatch) -> None:
     assert fetch_pubchem_cid("badname", session=sess) == "unknown"
 
 
+def test_fetch_pubchem_cid_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The lookup falls back to a broader query when exact matching fails."""
+    sess = requests.Session()
+
+    responses = [DummyResponse("", 404), DummyResponse("789\n")]
+
+    def fake_get(*args, **kwargs):
+        return responses.pop(0)
+
+    monkeypatch.setattr(sess, "get", fake_get)
+    assert fetch_pubchem_cid("almorexant", session=sess) == "789"
+
+
 # ---------------------------------------------------------------------------
 # annotate_pubchem_cids tests
 # ---------------------------------------------------------------------------
