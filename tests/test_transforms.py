@@ -250,6 +250,58 @@ def test_polymer_non_peptide() -> None:
     assert res["category"] == "small_molecule"
 
 
+@pytest.mark.parametrize(
+    "text", [
+        "gly-pro-pna",
+        "pyroglu-pro-arg-pna",
+        "meo-suc-ala-ala-pro-val-pna",
+    ],
+)
+def test_pna_chromophore_peptides(text: str) -> None:
+    res = normalize_name(text)
+    assert res["category"] == "peptide"
+    assert res["flags"].get("chromophore") == ["pna"]
+
+
+def test_amc_peptide() -> None:
+    res = normalize_name("rhkackac-AMC")
+    assert res["category"] == "peptide"
+    assert res["flags"].get("fluorophore") == ["AMC"]
+
+
+def test_plain_peptide_sequence() -> None:
+    res = normalize_name("rhkackac")
+    assert res["category"] == "peptide"
+
+
+@pytest.mark.parametrize("seq", ["rrrdddsddd", "grsrsrsrsrsr"])
+def test_poly_rich_sequences_are_peptides(seq: str) -> None:
+    res = normalize_name(seq)
+    assert res["category"] == "peptide"
+
+
+def test_peptide_with_salt_and_pna() -> None:
+    res = normalize_name("h-lys-ala-pna.2HCl")
+    assert res["category"] == "peptide"
+    assert res["flags"].get("salt") == ["HCl"]
+    assert res["flags"].get("chromophore") == ["pna"]
+
+
+def test_histone_peptide_keyword() -> None:
+    res = normalize_name("peptide histone h4 fragment")
+    assert res["category"] == "peptide"
+
+
+def test_from_p_number_peptide() -> None:
+    res = normalize_name("rhkackac from p53")
+    assert res["category"] == "peptide"
+
+
+def test_pna_not_oligo() -> None:
+    res = normalize_name("PNA ACGTACGT")
+    assert res["category"] != "oligonucleotide"
+
+
 def test_simple_rna_with_mods() -> None:
     res = normalize_name("5'-FAM-ACGUACGUACGU-3'")
     assert res["category"] == "oligonucleotide"
@@ -295,3 +347,17 @@ def test_vendor_tags_phos_bio() -> None:
     assert mods["three_prime"] == ["Bio"]
     assert res["flags"].get("biotin") == ["Bio"]
     assert res["normalized_name"] == "dna 12mer"
+
+
+def test_dna_probe_with_sequence() -> None:
+    text = "oligo DNA probe: ACGTNNNNACGT"
+    res = normalize_name(text)
+    assert res["category"] == "oligonucleotide"
+    assert res["oligo_info"]["type"] == "DNA"
+
+
+def test_sgrna_context() -> None:
+    text = "sgRNA 20nt: GACUACGUACGUACGUACGU"
+    res = normalize_name(text)
+    assert res["category"] == "oligonucleotide"
+    assert res["oligo_info"]["type"] == "CRISPR"

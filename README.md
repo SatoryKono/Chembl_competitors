@@ -110,6 +110,10 @@ Fluorophore labels such as **Alexa Fluor**, **HiLyte Fluor**, **DyLight**,
 early in the pipeline and logged under `flags.fluorophore` so that base
 chemical names remain intact.
 
+Chromophore tags like **pNA** are removed and recorded under
+`flags.chromophore`, preventing peptide substrates from being mistaken
+for oligonucleotides.
+
 Oligonucleotides are recognised via sequence patterns or keywords such as
 `oligo`, `primer`, `siRNA`, `gRNA`, and CRISPR-specific terms. The parser
 extracts 5′/3′ end modifiers, internal modifications, backbone type, and
@@ -120,7 +124,8 @@ oligonucleotide`, populate `oligo_info`, and record details in
 Peptides are detected via several heuristics: polymer-style prefixes like
 `poly-Glu:Tyr`, explicit terms such as `peptide` or `polypeptide`, and
 sequences of one- or three-letter amino-acid codes (optionally bearing
-protective groups like `H-`, `Ac-`, `Boc-`, `-OH`, or `-NH2`). When detected,
+protective groups like `H-`, `Ac-`, `Boc-`, `-OH`, or `-NH2`, as well as
+chromophore/fluorophore suffixes such as `-pNA` or `-AMC`. When detected,
 the output sets `category = peptide` and populates `peptide_info` with the
 peptide type and, for polymer forms, the normalized composition. Generic
 materials like "polymer support resin" are not misclassified as peptides

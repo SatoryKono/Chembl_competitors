@@ -58,6 +58,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
             BODIPY(?:[-/][A-Za-z0-9/]+|\s(?:[A-Za-z]{1,3}|[0-9/]+)){0,2}|
             Cy\d+|
             Rhodamine|
+            AMC|AFC|ACC|pNP|
             BHQ\d*|
             TRITC|
             DAPI|
@@ -155,7 +156,6 @@ OLIGO_KEYWORDS = [
     "antisense",
     "aso",
     "morpholino",
-    "pna",
     "lna",
     "grna",
     "sgrna",
@@ -180,16 +180,36 @@ ROLE_PATTERN = re.compile(
 SLASH_MOD_PATTERN = re.compile(r"/([^/]+)/")
 
 
+def _valid_nuc_sequence(seq: str) -> bool:
+    """Check if ``seq`` appears to be a nucleotide sequence."""
+
+    seq = seq.upper()
+    if re.search(r"[^ACGTURYKMSWBDHVN]", seq):
+        return False
+    if len(seq) < 8:
+        return False
+    bases = sum(1 for c in seq if c in "ACGTU")
+    degens = sum(1 for c in seq if c in "RYSWKMBDHVN")
+    if bases / len(seq) < 0.6:
+        return False
+    if degens / len(seq) > 0.4:
+        return False
+    if re.search(r"[EFILMPQZ]", seq):
+        return False
+    return True
+
+
 def _has_oligo_signal(text: str) -> bool:
     """Return True if text contains oligonucleotide hints."""
 
     lower = text.lower()
     if re.search(r"\b(" + "|".join(map(re.escape, OLIGO_KEYWORDS)) + r")\b", lower):
         return True
-    if SLASH_MOD_PATTERN.search(text):
+    if SLASH_MOD_PATTERN.search(text) or re.search(r"5['\u2032]|3['\u2032]", text):
         return True
-    if NUCLEO_PATTERN.search(text):
-        return True
+    for seq in NUCLEO_PATTERN.findall(text):
+        if _valid_nuc_sequence(seq):
+            return True
     return False
 
 
@@ -217,6 +237,7 @@ def _flatten_flags(flags: Dict[str, List[str]]) -> str:
         "biotin",
         "salt",
         "hydrate",
+        "chromophore",
         "noise",
         "parenthetical",
     ]
@@ -298,6 +319,19 @@ def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     return text
 
 
+def _detect_chromophore(text: str, flags: Dict[str, List[str]]) -> str:
+    """Detect pNA chromophore tokens without mistaking uppercase PNA."""
+
+    def repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if token.isupper():
+            return token
+        flags.setdefault("chromophore", []).append(token)
+        return " "
+
+    return re.sub(r"\bpna\b", repl, text, flags=re.IGNORECASE)
+
+
 def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
     """Remove non-structural descriptors inside and outside brackets."""
 
@@ -376,7 +410,7 @@ def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, D
             flags.setdefault("biotin", []).append(token)
         return ""
 
-    text = re.sub(r"5['\u2032]?-(\w+)-", _five_dash, text)
+    text = re.sub(r"5['\u2032]?-(\w{1,6})-", _five_dash, text)
 
     # Three-prime dash-style modifications e.g., -BHQ1-3'
     def _three_dash(match: re.Match[str]) -> str:
@@ -389,7 +423,7 @@ def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, D
                 flags.setdefault("biotin", []).append(token)
         return ""
 
-    text = re.sub(r"-(\w+)-3['\u2032]?", _three_dash, text)
+    text = re.sub(r"-(\w{1,6})-3['\u2032]?", _three_dash, text)
     text = re.sub(r"5['\u2032]?|3['\u2032]?", "", text)
 
     # Backbone PS indicated by '*' or PS tokens
@@ -402,16 +436,18 @@ def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, D
     for match in ROLE_PATTERN.finditer(text):
         role = match.group(1).lower()
         seq_raw = match.group(2)
-        seq = re.sub(r"[^ACGTURYKMSWBDHVN]", "", seq_raw).upper()
-        if len(seq) >= 8:
+        cleaned = re.sub(r"[^ACGTURYKMSWBDHVN]", "", seq_raw)
+        if _valid_nuc_sequence(cleaned):
+            seq = cleaned.upper()
             sequences.append({"role": role, "seq": seq, "length": len(seq)})
             roles.append(role)
         text = text.replace(match.group(0), " ")
 
     # Remaining sequences without explicit roles
     for seq_match in re.findall(r"[ACGTURYKMSWBDHVN*-]{8,}", text, re.IGNORECASE):
-        seq = re.sub(r"[^ACGTURYKMSWBDHVN]", "", seq_match).upper()
-        if len(seq) >= 8:
+        cleaned = re.sub(r"[^ACGTURYKMSWBDHVN]", "", seq_match)
+        if _valid_nuc_sequence(cleaned):
+            seq = cleaned.upper()
             role = "sense" if not roles else f"seq{len(roles)+1}"
             sequences.append({"role": role, "seq": seq, "length": len(seq)})
             roles.append(role)
@@ -430,10 +466,6 @@ def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, D
         oligo_type = "CRISPR"
     elif re.search(r"aso|antisense", orig_lower) or mods["backbone"] == "PS":
         oligo_type = "ASO"
-    elif re.search(r"pna", orig_lower):
-        oligo_type = "PNA"
-    elif re.search(r"lna", orig_lower):
-        oligo_type = "LNA"
 
     subtype = "NONE"
     if re.search(r"aptamer", orig_lower):
@@ -502,18 +534,38 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
                 "composition": ":".join(comp_clean),
             }
 
-    if re.search(r"\b(?:peptide|oligopeptide|polypeptide)\b", lowered):
+    if re.search(r"\b(?:peptide|oligopeptide|polypeptide|substrate|histone)\b", lowered) or re.search(
+        r"from\s+p\d+", lowered
+    ):
         return "peptide", {"type": "aa_terms"}
 
     tokens = [t for t in re.split(r"[-:,\s]+", text) if t]
-    protect = {"H", "AC", "BOC", "OH", "NH2"}
-    tokens_clean = [t for t in tokens if t.upper() not in protect]
+    protect = {
+        "H",
+        "AC",
+        "BOC",
+        "OH",
+        "NH2",
+        "PNA",
+        "AMC",
+        "AFC",
+        "ACC",
+        "PNP",
+        "MEO",
+        "SUC",
+        "PYROGLU",
+    }
+    tokens_clean = [t for t in tokens if t.upper() not in protect and t.isalpha()]
+    for tok in tokens_clean:
+        up = tok.upper()
+        if tok.lower() in OLIGO_KEYWORDS:
+            continue
+        if len(up) >= 6 and all(c in AA1 for c in up) and not _valid_nuc_sequence(up):
+            return "peptide", {"type": "sequence_like"}
     if len(tokens_clean) >= 2:
         if all(t.upper() in AA1 for t in tokens_clean):
             return "peptide", {"type": "sequence_like"}
-        if all(
-            t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t
-        ):
+        if all(t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t):
             return "peptide", {"type": "sequence_like"}
     return "small_molecule", {}
 
@@ -539,25 +591,28 @@ def normalize_name(name: str) -> Dict[str, object]:
     text = _fix_spacing(text)
     base_clean = text
 
-    oligo_info: Dict[str, object] = {}
-    if _has_oligo_signal(text):
-        text, oligo_info, extra = parse_oligo_segments(text, flags)
-        flags.update(extra)
-        category = "oligonucleotide"
-    else:
-        category = "small_molecule"
+    # Early removal of chromophore-like tags
+    text = _detect_chromophore(text, flags)
 
-    # Detect and remove common flagged tokens
-    text = _detect_and_remove(text, "fluorophore", flags)
+    # Remove concentrations and other flagged tokens
     text = _remove_concentrations(text, flags)
+    text = re.sub(r"(?i)(\d+)(HCl|HBr|HNO3|H2SO4)", r"\1 \2", text)
     for key in ["salt", "isotope", "biotin", "hydrate"]:
         text = _detect_and_remove(text, key, flags)
     text = _remove_noise_descriptors(text, flags)
-    text = _cleanup(text)
+    text = _fix_spacing(text)
 
-    peptide_info: Dict[str, object] = {}
-    if category != "oligonucleotide":
-        category, peptide_info = _detect_peptide(text)
+    # Peptide detection has priority over oligonucleotides
+    category, peptide_info = _detect_peptide(text)
+    oligo_info: Dict[str, object] = {}
+    if category != "peptide" and "pna" not in base_clean.lower() and _has_oligo_signal(text):
+        text, oligo_info, extra = parse_oligo_segments(text, flags)
+        flags.update(extra)
+        category = "oligonucleotide"
+
+    text = _detect_and_remove(text, "fluorophore", flags)
+
+    text = _cleanup(text)
 
     status = ""
     flag_empty_after_clean = False
@@ -604,6 +659,7 @@ def normalize_name(name: str) -> Dict[str, object]:
         "flag_biotin": bool(flags.get("biotin")),
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
+        "flag_chromophore": bool(flags.get("chromophore")),
         "flag_oligo": bool(flags.get("oligo")),
         "flag_empty_after_clean": flag_empty_after_clean,
     }
