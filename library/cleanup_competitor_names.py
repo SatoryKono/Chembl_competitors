@@ -507,9 +507,10 @@ def _canonicalize_and_strip_isotopes(text: str, flags: Dict[str, List[str]]) -> 
             elif lower.startswith("u13c") or lower.startswith("u-13c"):
                 token = "U-13C"
             else:
-                token = token.upper()
+                upper = token.upper()
+                token = f"[{upper}]" if f"[{upper}]" in before else upper
             norm_matches.append(token)
-        flags.setdefault("isotope", []).extend(norm_matches)
+        flags.setdefault("isotope", []).extend(sorted(set(norm_matches), key=norm_matches.index))
 
     # Remove bracketed isotopes while preserving necessary hyphens
     iso_brkt = r"\[\s*(?:125I|3H|14C|32P|86Rb)\s*\]"

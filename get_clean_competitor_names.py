@@ -1,4 +1,4 @@
-"""Command-line interface for chemical name normalization."""
+"""Command-line interface for generating clean competitor names."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 import pandas as pd
 
-from mylib import normalize_name, read_input_csv, validate_input, write_output_csv
+from library import normalize_name, read_input_csv, validate_input, write_output_csv
 
 
 def parse_args() -> argparse.Namespace:

@@ -1,4 +1,4 @@
-"""Tests for I/O utilities."""
+"""Tests for I/O utilities and validation helpers."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from mylib.io_utils import read_input_csv
+from library.cleanup_competitor_io_validation import read_input_csv
 
 
 def test_read_input_csv_unescaped_commas(tmp_path: Path) -> None:

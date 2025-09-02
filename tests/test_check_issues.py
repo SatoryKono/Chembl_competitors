@@ -1,4 +1,4 @@
-"""Tests for validation helpers."""
+"""Tests for issue-checking helpers."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from mylib.validate import check_issues
+from library.cleanup_competitor_io_validation import check_issues
 
 
 def test_check_issues() -> None:
