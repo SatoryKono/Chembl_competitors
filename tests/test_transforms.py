@@ -10,7 +10,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pytest
 
-from mylib.transforms import PATTERNS, normalize_name, _fix_spacing
+from library.cleanup_competitor_names import PATTERNS, _fix_spacing, normalize_name
 
 
 

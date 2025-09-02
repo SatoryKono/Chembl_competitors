@@ -27,7 +27,7 @@ pip install black ruff mypy pytest
 ## Usage
 
 ```bash
-python main.py --input examples1.csv --output out.csv
+python get_clean_competitor_names.py --input examples1.csv --output out.csv
 ```
 
 ### Arguments
