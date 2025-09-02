@@ -7,6 +7,7 @@ import logging
 
 import pandas as pd
 
+from mylib import annotate_pubchem_cids
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ def main() -> None:
     setup_logging(args.log_level)
 
     df = pd.read_csv(args.input, sep=args.sep, encoding=args.encoding)
+    out_df = annotate_pubchem_cids(df, name_column="search_name")
     out_df.to_csv(args.output, sep=args.sep, encoding=args.encoding, index=False)
 
 
