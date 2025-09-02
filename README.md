@@ -2,6 +2,68 @@
 
 This project provides utilities to preprocess and normalize chemical names in bulk.
 
+## PubChem CID Lookup
+
+The repository also ships a helper script to annotate compound names with
+PubChem Compound IDs (CIDs). For each value in a column named
+``search_name`` the tool performs an exact name query against the PubChem
+PUG REST service and appends the result as ``pubchem_cid``:
+
+* Single CID → that numeric identifier.
+* No matches → ``"unknown"``.
+* Multiple matches → ``"multiply"``.
+* Names shorter than five characters → ``"compound name is too short"`` (no network request).
+
+### Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+Optional quality tools:
+
+```bash
+pip install black ruff mypy pytest
+```
+
+### Usage
+
+```bash
+python main.py --input examples1.csv --output out.csv
+```
+
+Additional arguments:
+
+- ``--sep`` – CSV delimiter (default `,`).
+- ``--encoding`` – file encoding (default `utf-8`).
+- ``--log-level`` – logging level.
+
+### Example
+
+Input ``examples1.csv``:
+
+```csv
+search_name
+aspirin
+water
+NaCl
+```
+
+Run:
+
+```bash
+python main.py --input examples1.csv --output out.csv
+```
+
+Output ``out.csv``:
+
+```csv
+search_name,pubchem_cid
+aspirin,2244
+water,962
+NaCl,compound name is too short
+```
+
 ## Installation
 
 
