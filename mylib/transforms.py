@@ -58,8 +58,9 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
             BODIPY(?:[-/][A-Za-z0-9/]+|\s(?:[A-Za-z]{1,3}|[0-9/]+)){0,2}|
             Cy\d+|
             Rhodamine|
-            AMC|AFC|ACC|pNP|
+            AMC|AFC|ACC|EDANS|DABCYL|pNP|
             BHQ\d*|
+            Atto\d+|
             TRITC|
             DAPI|
             Texas\sRed|
@@ -460,8 +461,10 @@ def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
                     token = lower
                 else:
                     token = token.upper()
-            elif key == "fluorophore" and token.isalpha():
-                token = token.upper()
+            elif key == "fluorophore":
+                token = token.strip()
+                if token.isalpha():
+                    token = token.upper()
             norm_matches.append(token)
         flags.setdefault(key, []).extend(norm_matches)
         text = pattern.sub(" ", text)
@@ -496,7 +499,7 @@ def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
         if cleaned.lower() in STOPWORDS:
             cleaned = ""
         if cleaned:
-            return cleaned
+            return match.group(0)[0] + cleaned + match.group(0)[-1]
         flags.setdefault("parenthetical", []).append(match.group(0))
         return ""
 
@@ -642,9 +645,35 @@ def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, D
     return text, info, extra_flags
 
 
+def _remove_hanging_brackets(text: str) -> str:
+    """Remove stray or empty bracket tokens."""
+
+    text = re.sub(r"\[\[", "[", text)
+    text = re.sub(r"\]\]", "]", text)
+    text = re.sub(r"\(\(", "(", text)
+    text = re.sub(r"\)\)", ")", text)
+    text = re.sub(r"\{\{", "{", text)
+    text = re.sub(r"\}\}", "}", text)
+    text = re.sub(r"\(\s*\)", " ", text)
+    text = re.sub(r"\[\s*\]", " ", text)
+    text = re.sub(r"\{\s*\}", " ", text)
+    text = re.sub(r"^[\)\]\}]+", "", text)
+    text = re.sub(r"[\(\[\{]+$", "", text)
+    for open_b, close_b in [("(", ")"), ("[", "]"), ("{", "}")]:
+        ob = re.escape(open_b)
+        cb = re.escape(close_b)
+        if close_b not in text:
+            text = re.sub(rf"^{ob}+", "", text)
+        if open_b not in text:
+            text = re.sub(rf"{cb}+$", "", text)
+    text = re.sub(r"(?<!\S)[\(\)\[\]\{\}](?!\S)", " ", text)
+    return text
+
+
 def _cleanup(text: str) -> str:
     """Final whitespace and punctuation cleanup."""
 
+    text = _remove_hanging_brackets(text)
     # Remove errant spaces around connectors that may appear after token removal
     text = _fix_spacing(text)
     # Fix decimals such as ``1 . 5`` -> ``1.5``
@@ -661,8 +690,25 @@ def _cleanup(text: str) -> str:
     return text.strip()
 
 
+def is_short_garbage(name: str) -> bool:
+    """Identify strings that are too short to be meaningful."""
+
+    t = name.strip()
+    if re.fullmatch(r".", t, flags=re.I):
+        return True
+    if re.fullmatch(r"\d{2}", t):
+        return True
+    if re.fullmatch(r"\d\s*[abcABC]", t):
+        return True
+    return False
+
+
 def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
-    """Detect peptide-like strings and return category and info."""
+    """Detect peptide-like strings and return category and info.
+
+    The returned ``info`` dictionary may contain a ``residues`` list
+    describing individual amino-acid tokens that were identified.
+    """
 
     lowered = text.lower()
 
@@ -688,7 +734,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     ):
         return "peptide", {"type": "aa_terms"}
 
-    tokens = [t for t in re.split(r"[-:,\s]+", text) if t]
+    tokens = [t for t in re.split(r"[-:,/\+\s]+", text) if t]
     protect = {
         "H",
         "AC",
@@ -703,19 +749,45 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
         "MEO",
         "SUC",
         "PYROGLU",
+        "FAM",
+        "FITC",
+        "TAMRA",
+        "RHODAMINE",
+        "BODIPY",
+        "EDANS",
+        "DABCYL",
+        "ALEXA",
+        "FLUOR",
+        "ATTO",
+        "DYLIGHT",
+        "HILYTE",
     }
     tokens_clean = [t for t in tokens if t.upper() not in protect and t.isalpha()]
     for tok in tokens_clean:
         up = tok.upper()
         if tok.lower() in OLIGO_KEYWORDS:
             continue
-        if len(up) >= 6 and all(c in AA1 for c in up) and not _valid_nuc_sequence(up):
-            return "peptide", {"type": "sequence_like"}
-    if len(tokens_clean) >= 2:
-        if all(t.upper() in AA1 for t in tokens_clean):
-            return "peptide", {"type": "sequence_like"}
-        if all(t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t):
-            return "peptide", {"type": "sequence_like"}
+        if (
+            len(up) >= 6
+            and all(c in AA1 for c in up)
+            and not _valid_nuc_sequence(up)
+            and not re.search(r"(?:ine|ane|ene|ate|amide|acid|and)$", tok.lower())
+        ):
+            return "peptide", {"type": "sequence_like", "residues": [tok.lower()]}
+
+    residues: List[str] = []
+    for tok in tokens_clean:
+        if tok.upper() in AA1:
+            residues.append(tok.lower())
+        elif tok[:1].upper() + tok[1:].lower() in AA3:
+            residues.append(tok.lower())
+
+    if residues:
+        if len(residues) >= 2 and len(residues) == len(tokens_clean):
+            return "peptide", {"type": "sequence_like", "residues": residues}
+        if len(residues) == 1 and len(tokens_clean) == 1:
+            return "peptide", {"type": "sequence_like", "residues": residues}
+
     return "small_molecule", {}
 
 
@@ -764,11 +836,25 @@ def normalize_name(name: str) -> Dict[str, object]:
         category = "small_molecule"
     else:
         category, peptide_info = _detect_peptide(text)
+        residues = peptide_info.get("residues", [])
+        single_residue = len(residues) == 1
         if category != "peptide" and "pna" not in base_clean.lower() and _has_oligo_signal(text):
             text, oligo_info, extra = parse_oligo_segments(text, flags)
             flags.update(extra)
             category = "oligonucleotide"
-        text = _detect_and_remove(text, "fluorophore", flags)
+        if category == "peptide":
+            text = re.sub(r"(?i)z-\(ac\)\s*([A-Za-z]{3})", r"cbz-\1(ac)", text)
+            fluo_hits = PATTERNS["fluorophore"].findall(text)
+            if fluo_hits:
+                norm_hits = [h.upper() if h.isalpha() else h for h in fluo_hits]
+                flags.setdefault("fluorophore", []).extend(norm_hits)
+            if not single_residue:
+                def _repl(m: re.Match[str]) -> str:
+                    return m.group(0) if m.start() > 0 and text[m.start() - 1] == "(" else " "
+
+                text = PATTERNS["fluorophore"].sub(_repl, text)
+        else:
+            text = _detect_and_remove(text, "fluorophore", flags)
 
     text = _cleanup(text)
 
@@ -800,6 +886,10 @@ def normalize_name(name: str) -> Dict[str, object]:
         else:
             normalized_name = _fix_spacing(text).lower()
         search_name = normalized_name
+
+    if not status and is_short_garbage(normalized_name):
+        status = "empty_after_clean"
+        flag_empty_after_clean = True
 
     removed_tokens_flat = _flatten_flags(flags)
     oligo_tokens_flat = _flatten_oligo_flags(flags)

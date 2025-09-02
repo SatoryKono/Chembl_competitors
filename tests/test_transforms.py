@@ -160,6 +160,41 @@ def test_removed_tokens_flat() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("] dslet", "dslet"),
+        ("[[ampa", "ampa"),
+        ("[3H]]-5-ct", "5-ct"),
+        ("[ [ 3h ] - progesterone", "progesterone"),
+    ],
+)
+def test_hanging_brackets_removed(raw: str, expected: str) -> None:
+    res = normalize_name(raw)
+    assert res["search_name"] == expected
+
+
+@pytest.mark.parametrize("raw", ["9", "14", "1a", "2B", "3 c"])
+def test_short_garbage_flag(raw: str) -> None:
+    res = normalize_name(raw)
+    assert res["status"] == "empty_after_clean"
+    assert res["flag_empty_after_clean"] is True
+
+
+@pytest.mark.parametrize(
+    "raw, expected, flag",
+    [
+        ("(z-(ac) lys-amc)", "(cbz-lys(ac)-amc)", "AMC"),
+        ("FAM-lys", "fam-lys", "FAM"),
+        ("lys-EDANS", "lys-edans", "EDANS"),
+    ],
+)
+def test_single_residue_peptide_keeps_fluor(raw: str, expected: str, flag: str) -> None:
+    res = normalize_name(raw)
+    assert res["search_name"] == expected
+    assert flag in res["flags"].get("fluorophore", [])
+
+
 def test_removed_tokens_flat_empty() -> None:
     res = normalize_name("aspirin")
     assert res["removed_tokens_flat"] == ""

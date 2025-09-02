@@ -10,6 +10,7 @@ that artifacts such as `5 ' ; 1,3 -diol` become `5'; 1,3-diol`. Brackets lose
 padding, connectors (`-`, `/`, `:`, `+`) have no surrounding spaces, semicolons
 and commas carry a single space on the right, and primes cling to neighboring
 tokens.
+Orphaned or empty brackets are removed once all annotations have been stripped.
 
 ```bash
 pip install -r requirements.txt
@@ -100,7 +101,9 @@ parentheses/brackets and then globally—with the removed terms collected under
 If aggressive cleaning removes all content from a name, the pipeline falls back
 to a minimally cleaned version of the original text. In such cases the output
 includes `status = empty_after_clean` and sets the boolean indicator
-`flag_empty_after_clean` to `True` so these rows can be reviewed manually.
+`flag_empty_after_clean` to `True` so these rows can be reviewed manually. The
+same status is raised for short "garbage" tokens (single characters, two-digit
+numbers, or a digit followed by `a`/`b`/`c`).
 
 `search_name` always matches `normalized_name` unless a documented override
 occurs. The reason for any override is recorded in `search_override_reason`.
@@ -113,6 +116,11 @@ chemical names remain intact.
 Chromophore tags like **pNA** are removed and recorded under
 `flags.chromophore`, preventing peptide substrates from being mistaken
 for oligonucleotides.
+
+Terminal fluorophore tags are retained for peptides consisting of a single
+amino-acid residue (e.g., `FAM-lys`), though the matched fluorophores are still
+logged in `flags.fluorophore`. Internal tags within sequences, such as
+`lys(AMC)`, are preserved.
 
 Oligonucleotides are recognised via sequence patterns or keywords such as
 `oligo`, `primer`, `siRNA`, `gRNA`, and CRISPR-specific terms. The parser
