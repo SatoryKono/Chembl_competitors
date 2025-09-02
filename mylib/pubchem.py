@@ -178,7 +178,7 @@ def fetch_pubchem_record(name: str, *, session: Optional[requests.Session] = Non
     }
 
 
-def annotate_pubchem_info(
+def annotate_pubchem_cids(
     df: pd.DataFrame, *, name_column: str = "search_name", session: Optional[requests.Session] = None
 ) -> pd.DataFrame:
     """Annotate a DataFrame with PubChem metadata.
@@ -219,5 +219,4 @@ def annotate_pubchem_info(
     return pd.concat([df, info_df], axis=1)
 
 
-# Backwards compatibility ---------------------------------------------------
-annotate_pubchem_cids = annotate_pubchem_info
+
