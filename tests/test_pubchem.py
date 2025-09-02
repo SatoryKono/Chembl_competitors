@@ -114,6 +114,7 @@ def test_fetch_pubchem_record(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec["synonyms"] == "aspirin|acetylsalicylic acid"
 
 
+
 def test_fetch_pubchem_record_handles_400(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing properties or synonyms return empty strings rather than crash."""
 
@@ -160,11 +161,12 @@ def test_fetch_pubchem_record_handles_synonym_400(
     assert rec["synonyms"] == ""
 
 
+
 # ---------------------------------------------------------------------------
 # annotate_pubchem_info tests
 # ---------------------------------------------------------------------------
 
-
+m
 def test_annotate_pubchem_info(monkeypatch: pytest.MonkeyPatch) -> None:
     df = pd.DataFrame({"search_name": ["aspirin", "abcde"]})
 

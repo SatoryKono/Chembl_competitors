@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
+
 PUBCHEM_NAME_URL = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{}/cids/TXT"
+
 PUBCHEM_PROPERTY_URL = (
     "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{}/property/"
     "CanonicalSMILES,InChI,InChIKey,MolecularFormula,MolecularWeight,IUPACName/TXT"
@@ -99,9 +101,11 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
     return lines[0]
 
 
+
 def fetch_pubchem_record(
     name: str, *, session: Optional[requests.Session] = None
 ) -> Dict[str, str]:
+
     """Return metadata for ``name`` from PubChem.
 
     The lookup first resolves ``name`` to a CID via :func:`fetch_pubchem_cid` and
@@ -147,6 +151,7 @@ def fetch_pubchem_record(
     # ------------------------------------------------------------------
     # Fetch compound properties
     # ------------------------------------------------------------------
+
     prop_data: dict[str, str] = {}
     try:
         prop_resp = sess.get(PUBCHEM_PROPERTY_URL.format(cid), timeout=10)
@@ -165,9 +170,11 @@ def fetch_pubchem_record(
         logger.exception("Failed to fetch properties for CID %s", cid)
         raise
 
+
     # ------------------------------------------------------------------
     # Fetch synonyms
     # ------------------------------------------------------------------
+
     syn_lines: list[str] = []
     try:
         syn_resp = sess.get(PUBCHEM_SYNONYM_URL.format(cid), timeout=10)
@@ -183,6 +190,7 @@ def fetch_pubchem_record(
     except requests.RequestException:
         logger.exception("Failed to fetch synonyms for CID %s", cid)
         raise
+
     synonyms = "|".join(syn_lines)
 
     return {
@@ -198,10 +206,12 @@ def fetch_pubchem_record(
 
 
 def annotate_pubchem_info(
+
     df: pd.DataFrame,
     *,
     name_column: str = "search_name",
     session: Optional[requests.Session] = None,
+
 ) -> pd.DataFrame:
     """Annotate a DataFrame with PubChem metadata.
 
