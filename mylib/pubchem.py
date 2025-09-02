@@ -61,10 +61,7 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
     str
         CID string or one of the sentinel messages described above.
 
-    Raises
-    ------
-    requests.RequestException
-        On network or HTTP errors other than a 404 response.
+    On network errors the function logs the exception and returns ``"unknown"``.
     """
 
     if len(name) < 5:
@@ -80,11 +77,13 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
         if response.status_code in {400, 404}:
             # Fallback: retry without the exact-match constraint which may
             # yield results for valid synonyms not recognised as exact names.
-            logger.debug("Exact lookup failed for %s, retrying without name_type", name)
+            logger.debug(
+                "Exact lookup failed for %s, retrying without name_type", name
+            )
             response = sess.get(url, timeout=10)
     except requests.RequestException:
         logger.exception("Failed to query PubChem for %s", name)
-        raise
+        return "unknown"
 
     # PubChem returns HTTP 404 or 400 when no compound matches the query.
     if response.status_code in {400, 404}:
@@ -126,7 +125,8 @@ def fetch_pubchem_record(
     Returns
     -------
     dict
-        Mapping of field name to value as described above.
+        Mapping of field name to value as described above. Network failures
+        during property or synonym retrieval are logged and yield empty strings.
     """
 
     cid = fetch_pubchem_cid(name, session=session)
@@ -161,19 +161,22 @@ def fetch_pubchem_record(
                 prop_json.get("PropertyTable", {})
                 .get("Properties", [{}])[0]
             )
-            prop_data = {k: str(props.get(k, "")) for k in [
-                "CanonicalSMILES",
-                "InChI",
-                "InChIKey",
-                "MolecularFormula",
-                "MolecularWeight",
-                "IUPACName",
-            ]}
+            prop_data = {
+                k: str(props.get(k, ""))
+                for k in [
+                    "CanonicalSMILES",
+                    "InChI",
+                    "InChIKey",
+                    "MolecularFormula",
+                    "MolecularWeight",
+                    "IUPACName",
+                ]
+            }
         else:
             logger.info("No properties found for CID %s", cid)
     except requests.RequestException:
         logger.exception("Failed to fetch properties for CID %s", cid)
-        raise
+        prop_data = {}
 
     # ------------------------------------------------------------------
     # Fetch synonyms
@@ -197,7 +200,7 @@ def fetch_pubchem_record(
             logger.info("No synonyms found for CID %s", cid)
     except requests.RequestException:
         logger.exception("Failed to fetch synonyms for CID %s", cid)
-        raise
+        synonyms = ""
 
     return {
         "pubchem_cid": cid,
@@ -238,8 +241,6 @@ def annotate_pubchem_info(
     ------
     ValueError
         If ``name_column`` is missing from ``df``.
-    requests.RequestException
-        Propagated from the underlying network calls on failure.
     """
 
     if name_column not in df.columns:
