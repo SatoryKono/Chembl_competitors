@@ -40,6 +40,10 @@ def main() -> None:
     out_df["flags"] = out_df["flags"].apply(json.dumps)
     out_df["peptide_info"] = out_df["peptide_info"].apply(json.dumps)
 
+    out_df["oligo_info"] = out_df["oligo_info"].apply(json.dumps)
+    out_df["small_molecule_info"] = out_df["small_molecule_info"].apply(json.dumps)
+
+
     write_output_csv(out_df, args.output, sep=args.sep, encoding=args.encoding)
 
 

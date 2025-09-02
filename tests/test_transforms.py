@@ -85,7 +85,6 @@ def test_spacing_for_comma_and_decimal() -> None:
     """Spaces around commas and decimals are compacted."""
 
     res = normalize_name("N , N-dimethyl 1 . 5")
-
     assert res["search_name"] == "n, n-dimethyl 1.5"
 
 
@@ -119,7 +118,6 @@ def test_canonical_spacing_cases(raw: str, expected: str) -> None:
     """Spacing normalization conforms to canonical punctuation rules."""
 
     assert _fix_spacing(raw) == expected
-
 
 
 def test_salt_tokens_removed_and_logged() -> None:
@@ -171,6 +169,13 @@ def test_removed_tokens_flat_empty() -> None:
     assert res["removed_tokens_flat"] == ""
 
 
+
+def test_oligo_tokens_flat_empty() -> None:
+    res = normalize_name("aspirin")
+    assert res["oligo_tokens_flat"] == ""
+
+
+
 def test_search_name_defaults_to_normalized() -> None:
     """search_name should equal normalized_name when no override reason."""
 
@@ -186,7 +191,6 @@ def test_search_name_defaults_to_normalized() -> None:
         ("d5-amphetamine", "amphetamine", ["d5"]),
         ("U-13C glucose", "glucose", ["U-13C"]),
         ("d5 [3H] amphetamine", "amphetamine", ["d5", "[3H]"]),
-
         ("14C caffeine", "caffeine", ["14C"]),
         ("[14C]caffeine", "caffeine", ["[14C]"]),
         ("125I-insulin", "insulin", ["125I"]),
@@ -203,7 +207,6 @@ def test_search_name_defaults_to_normalized() -> None:
         ("d5-125I-amphetamine", "amphetamine", ["d5", "125I"]),
         ("U13C-15N-lysine", "lysine", ["U13C", "15N"]),
         ("d5 U-13C [3H] sample", "sample", ["d5", "U-13C", "[3H]"]),
-
     ],
 )
 def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
@@ -212,6 +215,9 @@ def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("isotope") == tokens
+
+    # Ensure no isotopic labels remain after normalization
+    assert PATTERNS["isotope"].findall(res["search_name"]) == []
 
 
 
@@ -252,3 +258,144 @@ def test_polymer_non_peptide() -> None:
     res = normalize_name("polymer support resin")
     assert res["category"] == "small_molecule"
 
+
+
+@pytest.mark.parametrize(
+    "text", [
+        "gly-pro-pna",
+        "pyroglu-pro-arg-pna",
+        "meo-suc-ala-ala-pro-val-pna",
+    ],
+)
+def test_pna_chromophore_peptides(text: str) -> None:
+    res = normalize_name(text)
+    assert res["category"] == "peptide"
+    assert res["flags"].get("chromophore") == ["pna"]
+
+
+def test_amc_peptide() -> None:
+    res = normalize_name("rhkackac-AMC")
+    assert res["category"] == "peptide"
+    assert res["flags"].get("fluorophore") == ["AMC"]
+
+
+def test_plain_peptide_sequence() -> None:
+    res = normalize_name("rhkackac")
+    assert res["category"] == "peptide"
+
+
+@pytest.mark.parametrize("seq", ["rrrdddsddd", "grsrsrsrsrsr"])
+def test_poly_rich_sequences_are_peptides(seq: str) -> None:
+    res = normalize_name(seq)
+    assert res["category"] == "peptide"
+
+
+def test_peptide_with_salt_and_pna() -> None:
+    res = normalize_name("h-lys-ala-pna.2HCl")
+    assert res["category"] == "peptide"
+    assert res["flags"].get("salt") == ["HCl"]
+    assert res["flags"].get("chromophore") == ["pna"]
+
+
+def test_histone_peptide_keyword() -> None:
+    res = normalize_name("peptide histone h4 fragment")
+    assert res["category"] == "peptide"
+
+
+def test_from_p_number_peptide() -> None:
+    res = normalize_name("rhkackac from p53")
+    assert res["category"] == "peptide"
+
+
+def test_pna_not_oligo() -> None:
+    res = normalize_name("PNA ACGTACGT")
+    assert res["category"] != "oligonucleotide"
+
+
+def test_simple_rna_with_mods() -> None:
+    res = normalize_name("5'-FAM-ACGUACGUACGU-3'")
+    assert res["category"] == "oligonucleotide"
+    assert res["oligo_info"]["type"] == "RNA"
+    assert res["flags"].get("fluorophore") == ["FAM"]
+    assert res["oligo_info"]["mods"]["five_prime"] == ["FAM"]
+    assert res["normalized_name"] == "rna 12mer"
+
+
+def test_sirna_two_strands() -> None:
+    text = "siRNA sense ACGUACGUACGUACGUACGU; antisense ACUACGUACGUACGUACGUA"
+    res = normalize_name(text)
+    assert res["category"] == "oligonucleotide"
+    assert res["oligo_info"]["type"] == "siRNA"
+    roles = {s["role"] for s in res["oligo_info"]["sequences"]}
+    assert {"sense", "antisense"} <= roles
+    assert res["normalized_name"].startswith("sirna")
+
+
+def test_crispr_two_parts() -> None:
+    text = "crRNA: GTTTTAGAGCTA; tracrRNA: AAAACCCGGGTT"
+    res = normalize_name(text)
+    assert res["category"] == "oligonucleotide"
+    roles = {s["role"] for s in res["oligo_info"]["sequences"]}
+    assert {"crrna", "tracrrna"} <= roles
+    assert res["oligo_info"]["type"] == "CRISPR"
+
+
+def test_aso_ps_backbone() -> None:
+    text = "T*G*C*A*T*G*C*A* antisense oligonucleotide PS"
+    res = normalize_name(text)
+    assert res["category"] == "oligonucleotide"
+    assert res["oligo_info"]["type"] == "ASO"
+    assert res["oligo_info"]["mods"]["backbone"] == "PS"
+
+
+def test_vendor_tags_phos_bio() -> None:
+    text = "/5Phos/ACGTNNNNACGT/3Bio/"
+    res = normalize_name(text)
+    assert res["category"] == "oligonucleotide"
+    mods = res["oligo_info"]["mods"]
+    assert mods["five_prime"] == ["Phos"]
+    assert mods["three_prime"] == ["Bio"]
+    assert res["flags"].get("biotin") == ["Bio"]
+    assert res["normalized_name"] == "dna 12mer"
+
+
+def test_dna_probe_with_sequence() -> None:
+    text = "oligo DNA probe: ACGTNNNNACGT"
+    res = normalize_name(text)
+    assert res["category"] == "oligonucleotide"
+    assert res["oligo_info"]["type"] == "DNA"
+
+
+def test_cyclic_nucleotide_is_small_molecule() -> None:
+    res = normalize_name("3 ' , 5 ' - [ 3h ] camp")
+    assert res["category"] == "small_molecule"
+    assert res["small_molecule_info"] == {"subtype": "cyclic_nucleotide"}
+    assert res["normalized_name"] == "3',5'-cAMP"
+    assert res["flags"].get("isotope") == ["[3H]"]
+
+
+def test_cyclic_nucleotide_fluorophore() -> None:
+    res = normalize_name("fam-3 ' , 5 '-camp")
+    assert res["category"] == "small_molecule"
+    assert res["normalized_name"] == "3',5'-cAMP"
+    assert res["flags"].get("fluorophore") == ["FAM"]
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("3 ' , 5 ' - [ 3h ] cgmp", "3',5'-cGMP"),
+        ("5 '-cgmp", "5'-cGMP"),
+    ],
+)
+def test_cyclic_nucleotide_variants(raw: str, expected: str) -> None:
+    res = normalize_name(raw)
+    assert res["category"] == "small_molecule"
+    assert res["normalized_name"] == expected
+
+
+def test_sgrna_context() -> None:
+    text = "sgRNA 20nt: GACUACGUACGUACGUACGU"
+    res = normalize_name(text)
+    assert res["category"] == "oligonucleotide"
+    assert res["oligo_info"]["type"] == "CRISPR"

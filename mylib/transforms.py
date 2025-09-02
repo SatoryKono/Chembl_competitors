@@ -50,6 +50,9 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         r"""
         \b(
             FITC|
+
+            FAM|
+
             Alexa(?:\s|-)?Fluor[\s-]?\d+|
             HiLyte(?:\s|-)?(?:Fluor)?[\s-]?\d+|
             DyLight[\s-]?\d+|
@@ -58,6 +61,9 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
             BODIPY(?:[-/][A-Za-z0-9/]+|\s(?:[A-Za-z]{1,3}|[0-9/]+)){0,2}|
             Cy\d+|
             Rhodamine|
+            AMC|AFC|ACC|pNP|
+            BHQ\d*|
+
             TRITC|
             DAPI|
             Texas\sRed|
@@ -69,6 +75,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         re.IGNORECASE | re.VERBOSE,
     ),
     "isotope": re.compile(
+
         r"(?<!\w)(?:"
         r"\[(?:3H|14C|13C|15N|2H|125I|18F)\]"  # bracketed isotopes
         r"|(?:3H|14C|13C|15N|2H|125I|18F|D|T)"    # bare prefixes and single letters
@@ -77,6 +84,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         r"|tritiated|deuterated"                   # descriptive words
         r")(?!\w)",
         re.IGNORECASE,
+
 
     ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
@@ -119,6 +127,74 @@ NOISE_REGEX = re.compile(
 STOPWORDS = {"in", "of", "and"}
 
 
+# ---------------------------------------------------------------------------
+# Cyclic nucleotide detection
+# ---------------------------------------------------------------------------
+
+# Patterns covering common representations of cyclic nucleotides. These
+# capture variants such as ``3',5'-cAMP``, ``c-di-gmp`` and ``cGAMP`` while
+# allowing for stray spaces or mixed delimiters.
+CNUC_PATTERNS = [
+    re.compile(r"(?i)\b(?:3'?[, ]?\s*5'?)\s*-\s*c\s*[acgut]\s*(?:mp|dp|tp)\b"),
+    re.compile(r"(?i)\bc\s*[acgut]\s*(?:mp|dp|tp)\b"),
+    re.compile(r"(?i)\bc-?di-?\s*(?:amp|gmp|cmp|ump|gamp)\b"),
+    re.compile(r"(?i)\b(?:(?:2'[, ]?3'|3'[, ]?5')\s*-\s*)?c\s*gamp\b"),
+]
+
+
+def is_cyclic_nucleotide(text: str) -> bool:
+    """Return ``True`` if ``text`` appears to denote a cyclic nucleotide."""
+
+    return any(p.search(text) for p in CNUC_PATTERNS)
+
+
+def canonicalize_cyclic_nucleotide(text: str) -> str:
+    """Canonicalize cyclic nucleotide names.
+
+    Parameters
+    ----------
+    text:
+        Raw text that already passed through spacing normalization.
+
+    Returns
+    -------
+    str
+        Canonical form such as ``3',5'-cAMP`` or ``c-di-GMP``.
+    """
+
+    # 3',5'-cNMP with optional spaces/commas
+    text = re.sub(
+        r"(?i)3'[, ]?\s*5'-\s*c\s*([acgut])\s*(mp|dp|tp)",
+        lambda m: f"3',5'-c{m.group(1).upper()}{m.group(2).upper()}",
+        text,
+    )
+    # 5'-cNMP prefixes
+    text = re.sub(
+        r"(?i)5'-\s*c\s*([acgut])\s*(mp|dp|tp)",
+        lambda m: f"5'-c{m.group(1).upper()}{m.group(2).upper()}",
+        text,
+    )
+    # Simple cNMP forms
+    text = re.sub(
+        r"(?i)\bc\s*([acgut])\s*(mp|dp|tp)\b",
+        lambda m: f"c{m.group(1).upper()}{m.group(2).upper()}",
+        text,
+    )
+    # c-di-XXX forms
+    text = re.sub(
+        r"(?i)\bc-?di-?\s*(amp|gmp|cmp|ump|gamp)\b",
+        lambda m: f"c-di-{m.group(1).upper()}",
+        text,
+    )
+    # cGAMP with optional prime orientation prefixes
+    text = re.sub(
+        r"(?i)(?:2'[, ]?3'|3'[, ]?5')?-?c\s*gamp",
+        "cGAMP",
+        text,
+    )
+    return _fix_spacing(text)
+
+
 AA1 = set("ACDEFGHIKLMNPQRSTVWY")
 AA3 = {
     "Ala",
@@ -144,6 +220,92 @@ AA3 = {
 }
 
 
+# Keywords and patterns for oligonucleotide detection
+OLIGO_KEYWORDS = [
+    "oligo",
+    "oligonucleotide",
+    "primer",
+    "probe",
+    "aptamer",
+    "sirna",
+    "shrna",
+    "mirna",
+    "antisense",
+    "aso",
+    "morpholino",
+    "lna",
+    "grna",
+    "sgrna",
+    "crrna",
+    "tracrrna",
+    "ribo",
+    "g-block",
+    "gene fragment",
+    "dna",
+    "rna",
+    "guide",
+    "target",
+    "protospacer",
+    "pam",
+]
+
+NUCLEO_PATTERN = re.compile(r"\b[ACGTURYKMSWBDHVN]{8,}\b", re.IGNORECASE)
+ROLE_PATTERN = re.compile(
+    r"(sense|antisense|guide|tracrrna|crrna)[:\s]+([-ACGTURYKMSWBDHVN\s]+)",
+    re.IGNORECASE,
+)
+SLASH_MOD_PATTERN = re.compile(r"/([^/]+)/")
+
+
+def _valid_nuc_sequence(seq: str) -> bool:
+    """Check if ``seq`` appears to be a nucleotide sequence."""
+
+    seq = seq.upper()
+    if re.search(r"[^ACGTURYKMSWBDHVN]", seq):
+        return False
+    if len(seq) < 8:
+        return False
+    bases = sum(1 for c in seq if c in "ACGTU")
+    degens = sum(1 for c in seq if c in "RYSWKMBDHVN")
+    if bases / len(seq) < 0.6:
+        return False
+    if degens / len(seq) > 0.4:
+        return False
+    if re.search(r"[EFILMPQZ]", seq):
+        return False
+    return True
+
+
+def _has_oligo_signal(text: str) -> bool:
+    """Return True if text contains oligonucleotide hints."""
+
+    lower = text.lower()
+    if re.search(r"\b(" + "|".join(map(re.escape, OLIGO_KEYWORDS)) + r")\b", lower):
+        return True
+    if SLASH_MOD_PATTERN.search(text) or re.search(r"5['\u2032]|3['\u2032]", text):
+        return True
+    for seq in NUCLEO_PATTERN.findall(text):
+        if _valid_nuc_sequence(seq):
+            return True
+    return False
+
+
+def _flatten_oligo_flags(flags: Dict[str, object]) -> str:
+    """Flatten oligo-related flags into a pipe-delimited string."""
+
+    parts: List[str] = []
+    if flags.get("oligo_type"):
+        parts.append(f"oligo_type:{flags['oligo_type']}")
+    for token in flags.get("oligo_mods", []) or []:
+        parts.append(f"oligo_mod:{token}")
+    for role in flags.get("oligo_roles", []) or []:
+        parts.append(f"oligo_role:{role}")
+    if "oligo_len_total" in flags:
+        parts.append(f"oligo_len_total:{flags['oligo_len_total']}")
+    return "|".join(parts)
+
+
+
 def _flatten_flags(flags: Dict[str, List[str]]) -> str:
     """Flatten selected flag tokens into a pipe-delimited string."""
 
@@ -153,6 +315,8 @@ def _flatten_flags(flags: Dict[str, List[str]]) -> str:
         "biotin",
         "salt",
         "hydrate",
+        "chromophore",
+
         "noise",
         "parenthetical",
     ]
@@ -215,9 +379,6 @@ def _fix_spacing(text: str) -> str:
 
 
 
-
-
-
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
     pattern = re.compile(
         r"\b\d+(?:\.\d+)?\s*(?:mM|M|uM|µM|nM|pM|%|mg/mL|mg\/mL|g/mL|mg|g|mL)\b",
@@ -231,25 +392,42 @@ def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
 
 
 
-
-def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
-    pattern = re.compile(r"(\([^)]*\)|\[[^]]*\])")
-    matches = pattern.findall(text)
-    if matches:
-        flags.setdefault("parenthetical", []).extend(matches)
-        text = pattern.sub(" ", text)
-    return text
-
-
-
-
 def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     pattern = PATTERNS[key]
     matches = pattern.findall(text)
     if matches:
-        flags.setdefault(key, []).extend(matches if isinstance(matches, list) else [matches])
+        if not isinstance(matches, list):
+            matches = [matches]
+        norm_matches: List[str] = []
+        for m in matches:
+            token = m
+            if key == "isotope":
+                lower = token.lower()
+                if re.match(r"d\d+", lower) or lower in {"deuterated", "tritiated"}:
+                    token = lower
+                else:
+                    token = token.upper()
+            elif key == "fluorophore" and token.isalpha():
+                token = token.upper()
+            norm_matches.append(token)
+        flags.setdefault(key, []).extend(norm_matches)
+
         text = pattern.sub(" ", text)
     return text
+
+
+
+def _detect_chromophore(text: str, flags: Dict[str, List[str]]) -> str:
+    """Detect pNA chromophore tokens without mistaking uppercase PNA."""
+
+    def repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if token.isupper():
+            return token
+        flags.setdefault("chromophore", []).append(token)
+        return " "
+
+    return re.sub(r"\bpna\b", repl, text, flags=re.IGNORECASE)
 
 
 
@@ -275,6 +453,144 @@ def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
     text = re.sub(r"\([^()]*\)|\[[^\[\]]*\]", _strip_bracket, text)
     text = NOISE_REGEX.sub(_log_noise, text)
     return text
+
+
+
+def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, Dict[str, object], Dict[str, object]]:
+    """Extract oligonucleotide sequences and modifications.
+
+    Parameters
+    ----------
+    text:
+        Raw text after Unicode and spacing normalization.
+    flags:
+        Global flags dictionary to populate with fluorophores/biotin markers
+        found within modification tags.
+
+    Returns
+    -------
+    cleaned_text, info, extra_flags
+        ``cleaned_text`` has modification tokens removed so subsequent stages
+        can operate on residual words. ``info`` captures parsed sequences and
+        modification metadata. ``extra_flags`` carries oligo-specific flag
+        entries to merge into the main ``flags`` mapping.
+    """
+
+    mods = {"five_prime": [], "three_prime": [], "internal": [], "backbone": "UNKNOWN"}
+    sequences: List[Dict[str, object]] = []
+    roles: List[str] = []
+    orig_lower = text.lower()
+
+    # Vendor-style modification tags /token/
+    for token in SLASH_MOD_PATTERN.findall(text):
+        lower = token.lower()
+        if lower.startswith("5"):
+            mod = token[1:]
+            mods["five_prime"].append(mod)
+            if "bio" in mod.lower():
+                flags.setdefault("biotin", []).append(mod)
+        elif lower.startswith("3"):
+            mod = token[1:]
+            mods["three_prime"].append(mod)
+            if "bio" in mod.lower():
+                flags.setdefault("biotin", []).append(mod)
+        else:
+            mods["internal"].append(token)
+        if PATTERNS["fluorophore"].search(token):
+            flags.setdefault("fluorophore", []).append(token)
+        text = text.replace(f"/{token}/", " ")
+
+    # Five-prime dash-style modifications e.g., 5'-FAM-
+    def _five_dash(match: re.Match[str]) -> str:
+        token = match.group(1)
+        mods["five_prime"].append(token)
+        if PATTERNS["fluorophore"].search(token):
+            flags.setdefault("fluorophore", []).append(token)
+        if token.lower().startswith("bio"):
+            flags.setdefault("biotin", []).append(token)
+        return ""
+
+    text = re.sub(r"5['\u2032]?-(\w{1,6})-", _five_dash, text)
+
+    # Three-prime dash-style modifications e.g., -BHQ1-3'
+    def _three_dash(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if token:
+            mods["three_prime"].append(token)
+            if PATTERNS["fluorophore"].search(token):
+                flags.setdefault("fluorophore", []).append(token)
+            if token.lower().startswith("bio"):
+                flags.setdefault("biotin", []).append(token)
+        return ""
+
+    text = re.sub(r"-(\w{1,6})-3['\u2032]?", _three_dash, text)
+    text = re.sub(r"5['\u2032]?|3['\u2032]?", "", text)
+
+    # Backbone PS indicated by '*' or PS tokens
+    if "*" in text or re.search(r"\bps\b", text, re.IGNORECASE):
+        mods["backbone"] = "PS"
+    else:
+        mods["backbone"] = "PO"
+
+    # Role-annotated sequences
+    for match in ROLE_PATTERN.finditer(text):
+        role = match.group(1).lower()
+        seq_raw = match.group(2)
+        cleaned = re.sub(r"[^ACGTURYKMSWBDHVN]", "", seq_raw)
+        if _valid_nuc_sequence(cleaned):
+            seq = cleaned.upper()
+            sequences.append({"role": role, "seq": seq, "length": len(seq)})
+            roles.append(role)
+        text = text.replace(match.group(0), " ")
+
+    # Remaining sequences without explicit roles
+    for seq_match in re.findall(r"[ACGTURYKMSWBDHVN*-]{8,}", text, re.IGNORECASE):
+        cleaned = re.sub(r"[^ACGTURYKMSWBDHVN]", "", seq_match)
+        if _valid_nuc_sequence(cleaned):
+            seq = cleaned.upper()
+            role = "sense" if not roles else f"seq{len(roles)+1}"
+            sequences.append({"role": role, "seq": seq, "length": len(seq)})
+            roles.append(role)
+        text = text.replace(seq_match, " ")
+
+    total_len = sum(s["length"] for s in sequences)
+    seq_concat = "".join(s["seq"] for s in sequences)
+    has_u = "U" in seq_concat
+    has_t = "T" in seq_concat
+    base_type = "RNA" if has_u and not has_t else "DNA" if has_t and not has_u else "UNKNOWN"
+
+    oligo_type = base_type
+    if re.search(r"sirna", orig_lower) or ("sense" in roles and "antisense" in roles):
+        oligo_type = "siRNA"
+    elif re.search(r"grna|sgrna|crrna|tracrrna", orig_lower):
+        oligo_type = "CRISPR"
+    elif re.search(r"aso|antisense", orig_lower) or mods["backbone"] == "PS":
+        oligo_type = "ASO"
+
+    subtype = "NONE"
+    if re.search(r"aptamer", orig_lower):
+        subtype = "aptamer"
+    elif re.search(r"primer", orig_lower):
+        subtype = "primer"
+    elif re.search(r"probe", orig_lower):
+        subtype = "probe"
+
+    info = {
+        "type": oligo_type,
+        "subtype": subtype,
+        "sequences": sequences,
+        "mods": mods,
+    }
+
+    extra_flags: Dict[str, object] = {
+        "oligo": 1,
+        "oligo_type": oligo_type,
+        "oligo_mods": mods["five_prime"] + mods["three_prime"] + mods["internal"],
+        "oligo_roles": roles,
+        "oligo_len_total": total_len,
+    }
+
+    return text, info, extra_flags
 
 
 def _cleanup(text: str) -> str:
@@ -322,18 +638,39 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
                 "composition": ":".join(comp_clean),
             }
 
-    if re.search(r"\b(?:peptide|oligopeptide|polypeptide)\b", lowered):
+
+    if re.search(r"\b(?:peptide|oligopeptide|polypeptide|substrate|histone)\b", lowered) or re.search(
+        r"from\s+p\d+", lowered
+    ):
         return "peptide", {"type": "aa_terms"}
 
     tokens = [t for t in re.split(r"[-:,\s]+", text) if t]
-    protect = {"H", "AC", "BOC", "OH", "NH2"}
-    tokens_clean = [t for t in tokens if t.upper() not in protect]
+    protect = {
+        "H",
+        "AC",
+        "BOC",
+        "OH",
+        "NH2",
+        "PNA",
+        "AMC",
+        "AFC",
+        "ACC",
+        "PNP",
+        "MEO",
+        "SUC",
+        "PYROGLU",
+    }
+    tokens_clean = [t for t in tokens if t.upper() not in protect and t.isalpha()]
+    for tok in tokens_clean:
+        up = tok.upper()
+        if tok.lower() in OLIGO_KEYWORDS:
+            continue
+        if len(up) >= 6 and all(c in AA1 for c in up) and not _valid_nuc_sequence(up):
+            return "peptide", {"type": "sequence_like"}
     if len(tokens_clean) >= 2:
         if all(t.upper() in AA1 for t in tokens_clean):
             return "peptide", {"type": "sequence_like"}
-        if all(
-            t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t
-        ):
+        if all(t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t):
 
             return "peptide", {"type": "sequence_like"}
     return "small_molecule", {}
@@ -350,7 +687,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     Returns
     -------
     dict
-
+y
         Dictionary with normalized fields. By default ``search_name`` equals
         ``normalized_name``; if they differ an explanatory string is stored in
         ``search_override_reason``.
@@ -359,28 +696,45 @@ def normalize_name(name: str) -> Dict[str, object]:
     flags: Dict[str, List[str]] = {}
     text = _unicode_normalize(name)
     text = _fix_spacing(text)
-    base_clean = text  # for fallback
 
+    base_clean = text
 
-    # Strip fluorophore labels before any other processing to avoid misclassifying
-    # numeric components as concentrations or noise.
-    text = _detect_and_remove(text, "fluorophore", flags)
+    # Early removal of chromophore-like tags
+    text = _detect_chromophore(text, flags)
+
+    # Remove concentrations and other flagged tokens
     text = _remove_concentrations(text, flags)
-    # Remove remaining flagged tokens
+    text = re.sub(r"(?i)(\d+)(HCl|HBr|HNO3|H2SO4)", r"\1 \2", text)
     for key in ["salt", "isotope", "biotin", "hydrate"]:
         text = _detect_and_remove(text, key, flags)
     text = _remove_noise_descriptors(text, flags)
+    text = _fix_spacing(text)
+
+    small_molecule_info: Dict[str, object] = {}
+    peptide_info: Dict[str, str] = {}
+    oligo_info: Dict[str, object] = {}
+
+    tmp_no_fluor = _detect_and_remove(text, "fluorophore", {})
+    if is_cyclic_nucleotide(tmp_no_fluor):
+        text = _detect_and_remove(text, "fluorophore", flags)
+        text = canonicalize_cyclic_nucleotide(tmp_no_fluor)
+        small_molecule_info["subtype"] = "cyclic_nucleotide"
+        category = "small_molecule"
+    else:
+        category, peptide_info = _detect_peptide(text)
+        if category != "peptide" and "pna" not in base_clean.lower() and _has_oligo_signal(text):
+            text, oligo_info, extra = parse_oligo_segments(text, flags)
+            flags.update(extra)
+            category = "oligonucleotide"
+        text = _detect_and_remove(text, "fluorophore", flags)
 
     text = _cleanup(text)
-    category, peptide_info = _detect_peptide(text)
 
     status = ""
     flag_empty_after_clean = False
-    if not text:
-        # Fall back to the base-clean string and ensure it is fully cleaned
+    if category != "oligonucleotide" and not text:
         text = _cleanup(base_clean)
         if not text:
-            # As a last resort, minimally normalize the original text
             text = _cleanup(_unicode_normalize(name))
 
         status = "empty_after_clean"
@@ -388,16 +742,27 @@ def normalize_name(name: str) -> Dict[str, object]:
         logger.warning("Name empty after cleaning; using fallback: %r", name)
 
 
+    if category == "oligonucleotide":
+        seqs = oligo_info.get("sequences", [])
+        length = seqs[0]["length"] if seqs else 0
+        typ = oligo_info.get("type", "unknown").lower()
+        if typ == "sirna":
+            normalized_name = f"sirna {length}mer sense/antisense"
+        elif typ == "crispr":
+            normalized_name = f"crispr grna {length}mer"
+        else:
+            normalized_name = f"{typ} {length}mer"
+        normalized_name = normalized_name.strip()
+        search_name = normalized_name
+    else:
+        if small_molecule_info.get("subtype") == "cyclic_nucleotide":
+            normalized_name = _fix_spacing(text)
+        else:
+            normalized_name = _fix_spacing(text).lower()
+        search_name = normalized_name
 
-
-
-    # Ensure spacing is compact after any late fallbacks
-    normalized_name = _fix_spacing(text).lower()
-
-
-    search_name = normalized_name
     removed_tokens_flat = _flatten_flags(flags)
-
+    oligo_tokens_flat = _flatten_oligo_flags(flags)
 
 
     result = {
@@ -406,14 +771,23 @@ def normalize_name(name: str) -> Dict[str, object]:
         "search_override_reason": "",
         "category": category,
         "peptide_info": peptide_info,
+
+        "oligo_info": oligo_info,
+        "small_molecule_info": small_molecule_info,
         "flags": flags,
         "removed_tokens_flat": removed_tokens_flat,
+        "oligo_tokens_flat": oligo_tokens_flat,
+
         "status": status,
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
+
+        "flag_chromophore": bool(flags.get("chromophore")),
+        "flag_oligo": bool(flags.get("oligo")),
+
         "flag_empty_after_clean": flag_empty_after_clean,
     }
     return result
