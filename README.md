@@ -10,7 +10,9 @@ that artifacts such as `5 ' ; 1,3 -diol` become `5'; 1,3-diol`. Brackets lose
 padding, connectors (`-`, `/`, `:`, `+`) have no surrounding spaces, semicolons
 and commas carry a single space on the right, and primes cling to neighboring
 tokens.
+
 Orphaned or empty brackets are removed once all annotations have been stripped.
+
 
 ```bash
 pip install -r requirements.txt
@@ -87,6 +89,7 @@ or `T`, `d5`-style deuteration, `deuterated`/`tritiated` descriptors, and
 `U-13C` are canonicalized (e.g., `[i125]` → `[125I]`) and removed from the
 normalized name with the original tokens recorded under `flags.isotope`.
 
+
 Salts and mineral acids such as hydrochloride, HCl, HBr, HNO3 or H2SO4 are
 removed from the normalized name and logged under `flags.salt`. Flattened
 tokens are also provided in `removed_tokens_flat` using a
@@ -101,9 +104,11 @@ parentheses/brackets and then globally—with the removed terms collected under
 If aggressive cleaning removes all content from a name, the pipeline falls back
 to a minimally cleaned version of the original text. In such cases the output
 includes `status = empty_after_clean` and sets the boolean indicator
+
 `flag_empty_after_clean` to `True` so these rows can be reviewed manually. The
 same status is raised for short "garbage" tokens (single characters, two-digit
 numbers, or a digit followed by `a`/`b`/`c`).
+
 
 `search_name` always matches `normalized_name` unless a documented override
 occurs. The reason for any override is recorded in `search_override_reason`.
@@ -117,10 +122,12 @@ Chromophore tags like **pNA** are removed and recorded under
 `flags.chromophore`, preventing peptide substrates from being mistaken
 for oligonucleotides.
 
+
 Terminal fluorophore tags are retained for peptides consisting of a single
 amino-acid residue (e.g., `FAM-lys`), though the matched fluorophores are still
 logged in `flags.fluorophore`. Internal tags within sequences, such as
 `lys(AMC)`, are preserved.
+
 
 Oligonucleotides are recognised via sequence patterns or keywords such as
 `oligo`, `primer`, `siRNA`, `gRNA`, and CRISPR-specific terms. The parser
@@ -128,6 +135,7 @@ extracts 5′/3′ end modifiers, internal modifications, backbone type, and
 roles like sense/antisense or guide/tracr. Matches set `category =
 oligonucleotide`, populate `oligo_info`, and record details in
 `flags.oligo_*` with a flattened summary in `oligo_tokens_flat`.
+
 
 Cyclic nucleotides including `cAMP`, `cGMP`, `c-di-GMP`, and `cGAMP` are
 detected by dedicated patterns, normalised to canonical forms (e.g.
@@ -142,6 +150,7 @@ cofactors like `CoA`, cholines, fluorogenic 4-MU glycosides, and dyes such as
 phenoxazines or resorufin are recognised early and classified under
 `category = small_molecule` with corresponding `small_molecule_info.subtype`
 values (`nucleotide`, `cofactor`, `choline`, `fluorogenic_glycoside`, `dye`).
+
 
 Peptides are detected via several heuristics: polymer-style prefixes like
 `poly-Glu:Tyr`, explicit terms such as `peptide` or `polypeptide`, and

@@ -49,7 +49,9 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         r"""
         \b(
             FITC|
+
             FAM|
+
             Alexa(?:\s|-)?Fluor[\s-]?\d+|
             HiLyte(?:\s|-)?(?:Fluor)?[\s-]?\d+|
             DyLight[\s-]?\d+|
@@ -58,9 +60,11 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
             BODIPY(?:[-/][A-Za-z0-9/]+|\s(?:[A-Za-z]{1,3}|[0-9/]+)){0,2}|
             Cy\d+|
             Rhodamine|
+
             AMC|AFC|ACC|EDANS|DABCYL|pNP|
             BHQ\d*|
             Atto\d+|
+
             TRITC|
             DAPI|
             Texas\sRed|
@@ -72,6 +76,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         re.IGNORECASE | re.VERBOSE,
     ),
     "isotope": re.compile(
+
         r"""
         (
             \[\s*\d{1,3}\s*[A-Z][a-z]?\s*\]                           # bracketed forms
@@ -80,7 +85,16 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
             |\b(?:deuterated|tritiated|U-?13C)\b                          # words
         )
         """,
-        re.IGNORECASE | re.VERBOSE,
+        r"(?<!\w)(?:"
+        r"\[(?:3H|14C|13C|15N|2H|125I|18F)\]"  # bracketed isotopes
+        r"|(?:3H|14C|13C|15N|2H|125I|18F|D|T)"    # bare prefixes and single letters
+        r"|d\d+"                                  # deuteration like d5
+        r"|U-?13C"                                 # uniform 13C labeling
+        r"|tritiated|deuterated"                   # descriptive words
+        r")(?!\w)",
+        re.IGNORECASE,
+
+
     ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
     "salt": re.compile(
@@ -89,6 +103,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
     ),
     "hydrate": re.compile(
         r"\b(" + "|".join(map(re.escape, HYDRATE_TOKENS)) + r")\b",
+
         re.IGNORECASE,
     ),
 }
@@ -119,6 +134,7 @@ NOISE_REGEX = re.compile(
 )
 
 STOPWORDS = {"in", "of", "and"}
+
 
 # ---------------------------------------------------------------------------
 # Cyclic nucleotide detection
@@ -187,6 +203,7 @@ def canonicalize_cyclic_nucleotide(text: str) -> str:
     )
     return _fix_spacing(text)
 
+
 AA1 = set("ACDEFGHIKLMNPQRSTVWY")
 AA3 = {
     "Ala",
@@ -211,6 +228,7 @@ AA3 = {
     "Tyr",
 }
 
+
 # Keywords and patterns for oligonucleotide detection
 OLIGO_KEYWORDS = [
     "oligo",
@@ -222,7 +240,9 @@ OLIGO_KEYWORDS = [
     "shrna",
     "mirna",
     "antisense",
+
     "sense",
+
     "aso",
     "morpholino",
     "lna",
@@ -241,7 +261,9 @@ OLIGO_KEYWORDS = [
     "pam",
 ]
 
+
 OLIGO_KEYWORDS_SET = {k.lower() for k in OLIGO_KEYWORDS}
+
 
 NUCLEO_PATTERN = re.compile(r"\b[ACGTURYKMSWBDHVN]{8,}\b", re.IGNORECASE)
 ROLE_PATTERN = re.compile(
@@ -249,6 +271,7 @@ ROLE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 SLASH_MOD_PATTERN = re.compile(r"/([^/]+)/")
+
 
 NUCLEOTIDE_SUFFIXES = [
     "ATP",
@@ -309,6 +332,7 @@ def _has_oligo_signal(text: str) -> bool:
     return False
 
 
+
 def _detect_small_molecule_guard(text: str) -> Tuple[str, str]:
     """Identify small-molecule classes that trump peptide detection.
 
@@ -354,6 +378,7 @@ def _flatten_oligo_flags(flags: Dict[str, object]) -> str:
     return "|".join(parts)
 
 
+
 def _flatten_flags(flags: Dict[str, List[str]]) -> str:
     """Flatten selected flag tokens into a pipe-delimited string."""
 
@@ -364,6 +389,7 @@ def _flatten_flags(flags: Dict[str, List[str]]) -> str:
         "salt",
         "hydrate",
         "chromophore",
+
         "noise",
         "parenthetical",
     ]
@@ -372,6 +398,7 @@ def _flatten_flags(flags: Dict[str, List[str]]) -> str:
         for token in flags.get(key, []):
             parts.append(f"{key}:{token}")
     return "|".join(parts)
+
 
 
 def _unicode_normalize(text: str) -> str:
@@ -422,6 +449,7 @@ def _fix_spacing(text: str) -> str:
     text = re.sub(r"\s{2,}", " ", text).strip()
 
     return text
+
 
 
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
@@ -504,6 +532,7 @@ def _canonicalize_and_strip_isotopes(text: str, flags: Dict[str, List[str]]) -> 
     return text
 
 
+
 def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     pattern = PATTERNS[key]
     matches = pattern.findall(text)
@@ -519,12 +548,14 @@ def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
                     token = lower
                 else:
                     token = token.upper()
+
             elif key == "fluorophore":
                 token = token.strip()
                 if token.isalpha():
                     token = token.upper()
             norm_matches.append(token)
         flags.setdefault(key, []).extend(norm_matches)
+
         text = pattern.sub(" ", text)
     return text
 
@@ -542,6 +573,7 @@ def _detect_chromophore(text: str, flags: Dict[str, List[str]]) -> str:
     return re.sub(r"\bpna\b", repl, text, flags=re.IGNORECASE)
 
 
+
 def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
     """Remove non-structural descriptors inside and outside brackets."""
 
@@ -557,7 +589,9 @@ def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
         if cleaned.lower() in STOPWORDS:
             cleaned = ""
         if cleaned:
+
             return match.group(0)[0] + cleaned + match.group(0)[-1]
+
         flags.setdefault("parenthetical", []).append(match.group(0))
         return ""
 
@@ -737,6 +771,7 @@ def _cleanup(text: str) -> str:
     # Fix decimals such as ``1 . 5`` -> ``1.5``
     text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
     text = re.sub(r"\s*\.\s*", ".", text)
+
     # Collapse multiple whitespace characters to single spaces
     text = re.sub(r"\s+", " ", text)
     # Re-run spacing fix in case the previous collapse introduced new gaps
@@ -744,8 +779,10 @@ def _cleanup(text: str) -> str:
     # Consolidate repeated connectors that may result from removals
     text = re.sub(r"([-/:+]){2,}", r"\1", text)
     # Drop leading/trailing punctuation and whitespace
+
     text = text.strip(" -/:,+")
     return text.strip()
+
 
 
 def is_short_garbage(name: str) -> bool:
@@ -770,6 +807,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
 
     lowered = text.lower()
 
+
     # polymer-style notation: poly-Glu:Tyr, poly (Glu, Tyr), poly Glu Tyr
     poly_match = re.search(
         r"\bpoly\b(?:\s*\(\s*|\s+|-)([A-Za-z]{1,3}(?:[,:\s-]+[A-Za-z]{1,3})*)\)?",
@@ -787,7 +825,15 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
                 "composition": ":".join(comp_clean),
             }
 
-    tokens = [t for t in re.split(r"[-:,/\+\s]+", text) if t]
+
+
+    if re.search(r"\b(?:peptide|oligopeptide|polypeptide|substrate|histone)\b", lowered) or re.search(
+        r"from\s+p\d+", lowered
+    ):
+        return "peptide", {"type": "aa_terms"}
+
+    tokens = [t for t in re.split(r"[-:,\s]+", text) if t]
+
     protect = {
         "H",
         "AC",
@@ -802,6 +848,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
         "MEO",
         "SUC",
         "PYROGLU",
+
         "FAM",
         "FITC",
         "TAMRA",
@@ -854,6 +901,7 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     if len(residues) >= 2 or (explicit_context and residues):
         return "peptide", {"type": "sequence_like", "residues": residues}
 
+
     return "small_molecule", {}
 
 
@@ -868,6 +916,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     Returns
     -------
     dict
+
         Dictionary with normalized fields. By default ``search_name`` equals
         ``normalized_name``; if they differ an explanatory string is stored in
         ``search_override_reason``.
@@ -876,6 +925,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     flags: Dict[str, List[str]] = {}
     text = _unicode_normalize(name)
     text = _fix_spacing(text)
+
     base_clean = text
 
     # Early removal of chromophore-like tags
@@ -883,9 +933,11 @@ def normalize_name(name: str) -> Dict[str, object]:
 
     # Remove concentrations and other flagged tokens
     text = _remove_concentrations(text, flags)
+
     text = _canonicalize_and_strip_isotopes(text, flags)
     text = re.sub(r"(?i)(\d+)(HCl|HBr|HNO3|H2SO4)", r"\1 \2", text)
     for key in ["salt", "biotin", "hydrate"]:
+
         text = _detect_and_remove(text, key, flags)
     text = _remove_noise_descriptors(text, flags)
     text = _fix_spacing(text)
@@ -926,6 +978,7 @@ def normalize_name(name: str) -> Dict[str, object]:
         else:
             text = _detect_and_remove(text, "fluorophore", flags)
 
+
     text = _cleanup(text)
 
     status = ""
@@ -934,9 +987,11 @@ def normalize_name(name: str) -> Dict[str, object]:
         text = _cleanup(base_clean)
         if not text:
             text = _cleanup(_unicode_normalize(name))
+
         status = "empty_after_clean"
         flag_empty_after_clean = True
         logger.warning("Name empty after cleaning; using fallback: %r", name)
+
 
     if category == "oligonucleotide":
         seqs = oligo_info.get("sequences", [])
@@ -957,6 +1012,7 @@ def normalize_name(name: str) -> Dict[str, object]:
             normalized_name = _fix_spacing(text).lower()
         search_name = normalized_name
 
+
     if not status and is_short_garbage(normalized_name):
         status = "empty_after_clean"
         flag_empty_after_clean = True
@@ -964,25 +1020,30 @@ def normalize_name(name: str) -> Dict[str, object]:
     removed_tokens_flat = _flatten_flags(flags)
     oligo_tokens_flat = _flatten_oligo_flags(flags)
 
+
     result = {
         "normalized_name": normalized_name,
         "search_name": search_name,
         "search_override_reason": "",
         "category": category,
         "peptide_info": peptide_info,
+
         "oligo_info": oligo_info,
         "small_molecule_info": small_molecule_info,
         "flags": flags,
         "removed_tokens_flat": removed_tokens_flat,
         "oligo_tokens_flat": oligo_tokens_flat,
+
         "status": status,
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
+
         "flag_chromophore": bool(flags.get("chromophore")),
         "flag_oligo": bool(flags.get("oligo")),
+
         "flag_empty_after_clean": flag_empty_after_clean,
     }
     return result

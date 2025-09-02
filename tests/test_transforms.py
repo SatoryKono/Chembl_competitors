@@ -7,9 +7,11 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
 import pytest
 
 from mylib.transforms import PATTERNS, normalize_name, _fix_spacing
+
 
 
 def test_isotope_flag() -> None:
@@ -37,6 +39,7 @@ def test_protective_group_sequence() -> None:
     res = normalize_name("H-Ala-Gly-OH")
     assert res["category"] == "peptide"
     assert res["peptide_info"]["type"] == "sequence_like"
+
 
 
 def test_noise_and_concentration_removal() -> None:
@@ -75,6 +78,7 @@ def test_spacing_compaction_after_flag_removal(connector: str) -> None:
 def test_repeated_connector_collapses() -> None:
     res = normalize_name("a - biotin - b")
     assert res["search_name"] == "a-b"
+
 
 
 def test_spacing_for_comma_and_decimal() -> None:
@@ -160,6 +164,7 @@ def test_removed_tokens_flat() -> None:
     )
 
 
+
 @pytest.mark.parametrize(
     "raw, expected",
     [
@@ -200,9 +205,11 @@ def test_removed_tokens_flat_empty() -> None:
     assert res["removed_tokens_flat"] == ""
 
 
+
 def test_oligo_tokens_flat_empty() -> None:
     res = normalize_name("aspirin")
     assert res["oligo_tokens_flat"] == ""
+
 
 
 def test_search_name_defaults_to_normalized() -> None:
@@ -223,7 +230,9 @@ def test_search_name_defaults_to_normalized() -> None:
         ("14C caffeine", "caffeine", ["14C"]),
         ("[14C]caffeine", "caffeine", ["[14C]"]),
         ("125I-insulin", "insulin", ["125I"]),
+
         ("[125 I] insulin", "insulin", ["[125I]"]),
+
         ("18F-FDG", "fdg", ["18F"]),
         ("[18F]fluorodeoxyglucose", "fluorodeoxyglucose", ["[18F]"]),
         ("2H water", "water", ["2H"]),
@@ -234,12 +243,14 @@ def test_search_name_defaults_to_normalized() -> None:
         ("d3-deuterated phenol", "phenol", ["d3", "deuterated"]),
         ("[3H][14C] compound", "compound", ["[3H]", "[14C]"]),
         ("d5-125I-amphetamine", "amphetamine", ["d5", "125I"]),
+
         ("U13C-15N-lysine", "lysine", ["U-13C", "15N"]),
         ("d5 U-13C [3H] sample", "sample", ["d5", "U-13C", "[3H]"]),
         ("[i125]-tyrosine", "tyrosine", ["[125I]"]),
         ("[125-i]tyrosine", "tyrosine", ["[125I]"]),
         ("i-125-tyrosine", "tyrosine", ["125I"]),
         ("iodobenzene[1251]", "iodobenzene", ["[125I]"]),
+
     ],
 )
 def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
@@ -248,8 +259,10 @@ def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("isotope") == tokens
+
     # Ensure no isotopic labels remain after normalization
     assert PATTERNS["isotope"].findall(res["search_name"]) == []
+
 
 
 @pytest.mark.parametrize(
@@ -269,6 +282,7 @@ def test_expanded_fluorophore_tokens(text: str, expected: str, token: str) -> No
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("fluorophore") == [token]
+
 
 @pytest.mark.parametrize(
     "text, composition",
