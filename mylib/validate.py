@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Iterable
 
-
 from .transforms import _has_oligo_signal
 
 
@@ -36,7 +35,6 @@ def validate_input(df: pd.DataFrame, required: Iterable[str] | None = None) -> N
         msg = f"Missing required columns: {missing}"
         logger.error(msg)
         raise ValueError(msg)
-
 
 
 def check_issues(df: pd.DataFrame) -> pd.DataFrame:

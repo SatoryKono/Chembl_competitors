@@ -9,7 +9,6 @@ from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
-
 # Tokens representing salts and mineral acids to strip early in processing
 SALT_TOKENS = [
     "hydrochloride",
@@ -50,9 +49,7 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         r"""
         \b(
             FITC|
-
             FAM|
-
             Alexa(?:\s|-)?Fluor[\s-]?\d+|
             HiLyte(?:\s|-)?(?:Fluor)?[\s-]?\d+|
             DyLight[\s-]?\d+|
@@ -61,9 +58,9 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
             BODIPY(?:[-/][A-Za-z0-9/]+|\s(?:[A-Za-z]{1,3}|[0-9/]+)){0,2}|
             Cy\d+|
             Rhodamine|
-            AMC|AFC|ACC|pNP|
+            AMC|AFC|ACC|EDANS|DABCYL|pNP|
             BHQ\d*|
-
+            Atto\d+|
             TRITC|
             DAPI|
             Texas\sRed|
@@ -76,16 +73,24 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
     ),
     "isotope": re.compile(
 
-        r"(?<!\w)(?:"
-        r"\[(?:3H|14C|13C|15N|2H|125I|18F)\]"  # bracketed isotopes
-        r"|(?:3H|14C|13C|15N|2H|125I|18F|D|T)"    # bare prefixes and single letters
-        r"|d\d+"                                  # deuteration like d5
-        r"|U-?13C"                                 # uniform 13C labeling
-        r"|tritiated|deuterated"                   # descriptive words
-        r")(?!\w)",
-        re.IGNORECASE,
+        r"""
+(?<!\w)                                         # левая граница (не буква/цифра/подчёркивание)
+(?:
+    \[\s*(?:3H|2H|D|T|13C|14C|15N|18F|32P|86Rb|125I)\s*\]  # [125I], [3H] и т.п.
+  | (?:3H|2H|13C|14C|15N|18F|32P|86Rb|125I|D|T)            # «голые» префиксы/символы
+  | d\d+                                                  # d5, d10 (деутерирование)
+  | U-?13C                                                # U13C или U-13C
+  | tritiated|deuterated                                  # слова
+)
+(?!\w)                                                    # правая граница
+""",
+
+        re.IGNORECASE | re.VERBOSE,
 
 
+regexes = {
+    "isotope": re.compile(ISOTOPE_PATTERN, re.IGNORECASE | re.VERBOSE),
+}
     ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
     "salt": re.compile(
@@ -231,6 +236,11 @@ OLIGO_KEYWORDS = [
     "shrna",
     "mirna",
     "antisense",
+
+
+    "sense",
+
+
     "aso",
     "morpholino",
     "lna",
@@ -249,12 +259,45 @@ OLIGO_KEYWORDS = [
     "pam",
 ]
 
+
+
+OLIGO_KEYWORDS_SET = {k.lower() for k in OLIGO_KEYWORDS}
+
+
+
 NUCLEO_PATTERN = re.compile(r"\b[ACGTURYKMSWBDHVN]{8,}\b", re.IGNORECASE)
 ROLE_PATTERN = re.compile(
     r"(sense|antisense|guide|tracrrna|crrna)[:\s]+([-ACGTURYKMSWBDHVN\s]+)",
     re.IGNORECASE,
 )
 SLASH_MOD_PATTERN = re.compile(r"/([^/]+)/")
+
+
+
+NUCLEOTIDE_SUFFIXES = [
+    "ATP",
+    "ADP",
+    "AMP",
+    "GTP",
+    "GDP",
+    "GMP",
+    "UTP",
+    "UDP",
+    "UMP",
+    "CTP",
+    "CDP",
+    "CMP",
+]
+NUCLEOTIDE_PATTERN_GUARD = re.compile(
+    r"(?i)\b(?:[0-9a-z-]*)(?:" + "|".join(NUCLEOTIDE_SUFFIXES) + r")\b"
+)
+NUCLEOTIDE_TOKEN_STOP = set(NUCLEOTIDE_SUFFIXES)
+COA_PATTERN = re.compile(r"(?i)\b(?:acetyl[\s-]*)?coa\b")
+CHOLINE_PATTERN = re.compile(r"(?i)\b(?:acetyl[\s-]*)?choline\b")
+MU_PATTERN = re.compile(
+    r"(?i)(?:4\s*-?mu|4\s*-?methylumbelliferyl|mug|muf).*?(glcnac|glucos|galactos|mannos|fucos|glycoside)"
+)
+DYE_PATTERN = re.compile(r"(?i)(phenoxazin|resorufin|amplex\s*red)")
 
 
 def _valid_nuc_sequence(seq: str) -> bool:
@@ -288,6 +331,38 @@ def _has_oligo_signal(text: str) -> bool:
         if _valid_nuc_sequence(seq):
             return True
     return False
+
+
+
+
+def _detect_small_molecule_guard(text: str) -> Tuple[str, str]:
+    """Identify small-molecule classes that trump peptide detection.
+
+    Parameters
+    ----------
+    text:
+        Input string after early cleaning steps.
+
+    Returns
+    -------
+    tuple
+        ``(subtype, processed_text)`` where ``subtype`` is empty if no guard
+        matched. ``processed_text`` may be a canonicalized form of ``text``.
+    """
+
+    if is_cyclic_nucleotide(text):
+        return "cyclic_nucleotide", canonicalize_cyclic_nucleotide(text)
+    if NUCLEOTIDE_PATTERN_GUARD.search(text):
+        return "nucleotide", text
+    if COA_PATTERN.search(text):
+        return "cofactor", text
+    if CHOLINE_PATTERN.search(text):
+        return "choline", text
+    if MU_PATTERN.search(text):
+        return "fluorogenic_glycoside", text
+    if DYE_PATTERN.search(text):
+        return "dye", text
+    return "", text
 
 
 def _flatten_oligo_flags(flags: Dict[str, object]) -> str:
@@ -391,6 +466,74 @@ def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
     return text
 
 
+def _canonicalize_and_strip_isotopes(text: str, flags: Dict[str, List[str]]) -> str:
+    """Canonicalize isotope markers and remove them without artifacts.
+
+    The routine first normalizes common isotopic forms—particularly for
+    I-125—and then strips both bracketed and bare tokens while logging all
+    matches under ``flags['isotope']``.
+    """
+
+    # Normalize dash variants to hyphen for consistent matching
+    text = re.sub(r"[\u2013\u2014\u2212]", "-", text)
+
+    # Canonicalize various I-125 notations
+    text = re.sub(r"(?i)\[\s*i\s*-\s*?125\s*\]", "[125I]", text)
+    text = re.sub(r"(?i)\[\s*125\s*-\s*?i\s*\]", "[125I]", text)
+    text = re.sub(r"(?i)\[\s*i\s*125\s*\]", "[125I]", text)
+    text = re.sub(r"(?i)\[\s*125\s*i\s*\]", "[125I]", text)
+    text = re.sub(r"(?i)\bi\s*-\s*?125\b", "125I", text)
+    text = re.sub(r"(?i)\b125\s*-\s*?i\b", "125I", text)
+    # cautious replacement of "1251" with "125I" in bracketed or iodo context
+    text = re.sub(r"(?i)(?<=\[)\s*125\s*1\s*(?=\])", "125I", text)
+    text = re.sub(r"(?i)(\biodo[\w-]{0,20})\[\s*125\s*1\s*\]", r"\1[125I]", text)
+    text = re.sub(r"(?i)\[\s*125\s*1\s*\](?=[-\s]*iodo)", "[125I]", text)
+
+    # Canonicalize other bracketed isotopes like [3H], [14C], [32P], [86Rb]
+    for iso in ["3H", "14C", "32P", "86Rb"]:
+        a, el = iso[:-1], iso[-1]
+        text = re.sub(rf"(?i)\[\s*{a}\s*{el}\s*\]", f"[{iso}]", text)
+
+    before = text
+    matches = PATTERNS["isotope"].findall(before)
+    # Detect prefixes like "[125Ityr0]" which aren't caught by the pattern
+    if re.search(r"(?i)\[\s*125\s*I", before) and "[125I]" not in matches:
+        matches.append("[125I]")
+
+    if matches:
+        norm_matches: List[str] = []
+        for m in matches:
+            token = m
+            lower = token.lower()
+            if re.match(r"d\d+", lower) or lower in {"deuterated", "tritiated"}:
+                token = lower
+            elif lower.startswith("u13c") or lower.startswith("u-13c"):
+                token = "U-13C"
+            else:
+                token = token.upper()
+            norm_matches.append(token)
+        flags.setdefault("isotope", []).extend(norm_matches)
+
+    # Remove bracketed isotopes while preserving necessary hyphens
+    iso_brkt = r"\[\s*(?:125I|3H|14C|32P|86Rb)\s*\]"
+    text = re.sub(rf"(?i)-\s*{iso_brkt}\s*-", "-", text)
+    text = re.sub(rf"(?i)-\s*{iso_brkt}", "-", text)
+    text = re.sub(rf"(?i){iso_brkt}\s*-", "-", text)
+    text = re.sub(rf"(?i){iso_brkt}", "", text)
+    # Remove prefix 125I inside mixed brackets like [125Ityr0]
+    text = re.sub(r"(?i)(?<=\[)\s*125\s*I\s*(?=[A-Za-z0-9])", "", text)
+
+    # Remove remaining isotopic tokens
+    text = PATTERNS["isotope"].sub(" ", text)
+
+    # Clean up bracket artifacts
+    text = re.sub(r"\[\s*\]", " ", text)
+    text = re.sub(r"\[\[", "[", text)
+    text = re.sub(r"\]\]", "]", text)
+
+    return text
+
+
 
 def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     pattern = PATTERNS[key]
@@ -407,14 +550,16 @@ def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
                     token = lower
                 else:
                     token = token.upper()
-            elif key == "fluorophore" and token.isalpha():
-                token = token.upper()
+
+            elif key == "fluorophore":
+                token = token.strip()
+                if token.isalpha():
+                    token = token.upper()
             norm_matches.append(token)
         flags.setdefault(key, []).extend(norm_matches)
 
         text = pattern.sub(" ", text)
     return text
-
 
 
 def _detect_chromophore(text: str, flags: Dict[str, List[str]]) -> str:
@@ -446,14 +591,16 @@ def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
         if cleaned.lower() in STOPWORDS:
             cleaned = ""
         if cleaned:
-            return cleaned
+
+
+            return match.group(0)[0] + cleaned + match.group(0)[-1]
+
         flags.setdefault("parenthetical", []).append(match.group(0))
         return ""
 
     text = re.sub(r"\([^()]*\)|\[[^\[\]]*\]", _strip_bracket, text)
     text = NOISE_REGEX.sub(_log_noise, text)
     return text
-
 
 
 def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, Dict[str, object], Dict[str, object]]:
@@ -593,12 +740,37 @@ def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, D
     return text, info, extra_flags
 
 
+def _remove_hanging_brackets(text: str) -> str:
+    """Remove stray or empty bracket tokens."""
+
+    text = re.sub(r"\[\[", "[", text)
+    text = re.sub(r"\]\]", "]", text)
+    text = re.sub(r"\(\(", "(", text)
+    text = re.sub(r"\)\)", ")", text)
+    text = re.sub(r"\{\{", "{", text)
+    text = re.sub(r"\}\}", "}", text)
+    text = re.sub(r"\(\s*\)", " ", text)
+    text = re.sub(r"\[\s*\]", " ", text)
+    text = re.sub(r"\{\s*\}", " ", text)
+    text = re.sub(r"^[\)\]\}]+", "", text)
+    text = re.sub(r"[\(\[\{]+$", "", text)
+    for open_b, close_b in [("(", ")"), ("[", "]"), ("{", "}")]:
+        ob = re.escape(open_b)
+        cb = re.escape(close_b)
+        if close_b not in text:
+            text = re.sub(rf"^{ob}+", "", text)
+        if open_b not in text:
+            text = re.sub(rf"{cb}+$", "", text)
+    text = re.sub(r"(?<!\S)[\(\)\[\]\{\}](?!\S)", " ", text)
+    return text
+
+
 def _cleanup(text: str) -> str:
     """Final whitespace and punctuation cleanup."""
 
+    text = _remove_hanging_brackets(text)
     # Remove errant spaces around connectors that may appear after token removal
     text = _fix_spacing(text)
-
     # Fix decimals such as ``1 . 5`` -> ``1.5``
     text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
     text = re.sub(r"\s*\.\s*", ".", text)
@@ -615,8 +787,26 @@ def _cleanup(text: str) -> str:
     return text.strip()
 
 
+
+def is_short_garbage(name: str) -> bool:
+    """Identify strings that are too short to be meaningful."""
+
+    t = name.strip()
+    if re.fullmatch(r".", t, flags=re.I):
+        return True
+    if re.fullmatch(r"\d{2}", t):
+        return True
+    if re.fullmatch(r"\d\s*[abcABC]", t):
+        return True
+    return False
+
+
 def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
-    """Detect peptide-like strings and return category and info."""
+    """Detect peptide-like strings and return category and info.
+
+    The returned ``info`` dictionary may contain a ``residues`` list
+    describing individual amino-acid tokens that were identified.
+    """
 
     lowered = text.lower()
 
@@ -644,7 +834,9 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     ):
         return "peptide", {"type": "aa_terms"}
 
-    tokens = [t for t in re.split(r"[-:,\s]+", text) if t]
+
+    tokens = [t for t in re.split(r"[-:,/\+\s]+", text) if t]
+
     protect = {
         "H",
         "AC",
@@ -659,20 +851,61 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
         "MEO",
         "SUC",
         "PYROGLU",
+
+        "FAM",
+        "FITC",
+        "TAMRA",
+        "RHODAMINE",
+        "BODIPY",
+        "EDANS",
+        "DABCYL",
+        "ALEXA",
+        "FLUOR",
+        "ATTO",
+        "DYLIGHT",
+        "HILYTE",
     }
     tokens_clean = [t for t in tokens if t.upper() not in protect and t.isalpha()]
-    for tok in tokens_clean:
-        up = tok.upper()
-        if tok.lower() in OLIGO_KEYWORDS:
-            continue
-        if len(up) >= 6 and all(c in AA1 for c in up) and not _valid_nuc_sequence(up):
-            return "peptide", {"type": "sequence_like"}
-    if len(tokens_clean) >= 2:
-        if all(t.upper() in AA1 for t in tokens_clean):
-            return "peptide", {"type": "sequence_like"}
-        if all(t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t):
 
-            return "peptide", {"type": "sequence_like"}
+
+    has_prefix = tokens and tokens[0].upper() in {"H", "AC", "BOC"}
+    has_suffix = tokens and tokens[-1].upper() in {"OH", "NH2"}
+    context_match = re.search(
+        r"\b(?:peptide|oligopeptide|polypeptide|substrate|histone)\b", lowered
+    ) or re.search(r"from\s+p\d+", lowered)
+    explicit_context = bool(context_match or (has_prefix and has_suffix))
+
+    residues: List[str] = []
+    for tok in tokens_clean:
+        if tok.upper() in protect:
+            continue
+        lower_tok = tok.lower()
+        if lower_tok in OLIGO_KEYWORDS_SET:
+            continue
+        up = tok.upper()
+        if up in NUCLEOTIDE_TOKEN_STOP:
+            continue
+        if up in {"A", "C", "G", "T", "U", "PS"}:
+            continue
+        if up in AA1:
+            residues.append(up.lower())
+            continue
+        cap = tok[:1].upper() + tok[1:].lower()
+        if cap in AA3:
+            residues.append(cap.lower())
+            continue
+        if (
+            re.fullmatch(r"[A-Za-z]+", tok)
+            and all(c in AA1 for c in up)
+            and not _valid_nuc_sequence(up)
+            and not re.search(r"(?:ine|ane|ene|ate|amide|acid|and|resin)$", tok.lower())
+        ):
+            residues.extend(list(up.lower()))
+
+    if len(residues) >= 2 or (explicit_context and residues):
+        return "peptide", {"type": "sequence_like", "residues": residues}
+
+
     return "small_molecule", {}
 
 
@@ -687,7 +920,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     Returns
     -------
     dict
-y
+
         Dictionary with normalized fields. By default ``search_name`` equals
         ``normalized_name``; if they differ an explanatory string is stored in
         ``search_override_reason``.
@@ -704,8 +937,12 @@ y
 
     # Remove concentrations and other flagged tokens
     text = _remove_concentrations(text, flags)
+
+
+    text = _canonicalize_and_strip_isotopes(text, flags)
     text = re.sub(r"(?i)(\d+)(HCl|HBr|HNO3|H2SO4)", r"\1 \2", text)
-    for key in ["salt", "isotope", "biotin", "hydrate"]:
+    for key in ["salt", "biotin", "hydrate"]:
+
         text = _detect_and_remove(text, key, flags)
     text = _remove_noise_descriptors(text, flags)
     text = _fix_spacing(text)
@@ -714,19 +951,40 @@ y
     peptide_info: Dict[str, str] = {}
     oligo_info: Dict[str, object] = {}
 
-    tmp_no_fluor = _detect_and_remove(text, "fluorophore", {})
-    if is_cyclic_nucleotide(tmp_no_fluor):
-        text = _detect_and_remove(text, "fluorophore", flags)
-        text = canonicalize_cyclic_nucleotide(tmp_no_fluor)
-        small_molecule_info["subtype"] = "cyclic_nucleotide"
+
+    text_with_fluor = text
+    tmp_no_fluor = _detect_and_remove(text_with_fluor, "fluorophore", {})
+    guard_subtype, guard_text = _detect_small_molecule_guard(tmp_no_fluor)
+    if guard_subtype:
+        text = _detect_and_remove(text_with_fluor, "fluorophore", flags)
+        text = guard_text
+        small_molecule_info["subtype"] = guard_subtype
         category = "small_molecule"
     else:
-        category, peptide_info = _detect_peptide(text)
-        if category != "peptide" and "pna" not in base_clean.lower() and _has_oligo_signal(text):
-            text, oligo_info, extra = parse_oligo_segments(text, flags)
+        category, peptide_info = _detect_peptide(tmp_no_fluor)
+        residues = peptide_info.get("residues", [])
+        single_residue = len(residues) == 1
+        if category != "peptide" and "pna" not in base_clean.lower() and _has_oligo_signal(text_with_fluor):
+            text, oligo_info, extra = parse_oligo_segments(text_with_fluor, flags)
             flags.update(extra)
             category = "oligonucleotide"
-        text = _detect_and_remove(text, "fluorophore", flags)
+        else:
+            text = _detect_and_remove(text_with_fluor, "fluorophore", flags)
+
+        if category == "peptide":
+            text = re.sub(r"(?i)z-\(ac\)\s*([A-Za-z]{3})", r"cbz-\1(ac)", text)
+            fluo_hits = PATTERNS["fluorophore"].findall(text)
+            if fluo_hits:
+                norm_hits = [h.upper() if h.isalpha() else h for h in fluo_hits]
+                flags.setdefault("fluorophore", []).extend(norm_hits)
+            if not single_residue:
+                def _repl(m: re.Match[str]) -> str:
+                    return m.group(0) if m.start() > 0 and text[m.start() - 1] == "(" else " "
+
+                text = PATTERNS["fluorophore"].sub(_repl, text)
+        else:
+            text = _detect_and_remove(text, "fluorophore", flags)
+
 
     text = _cleanup(text)
 
@@ -761,6 +1019,11 @@ y
             normalized_name = _fix_spacing(text).lower()
         search_name = normalized_name
 
+
+    if not status and is_short_garbage(normalized_name):
+        status = "empty_after_clean"
+        flag_empty_after_clean = True
+
     removed_tokens_flat = _flatten_flags(flags)
     oligo_tokens_flat = _flatten_oligo_flags(flags)
 
@@ -785,8 +1048,10 @@ y
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
 
+
         "flag_chromophore": bool(flags.get("chromophore")),
         "flag_oligo": bool(flags.get("oligo")),
+
 
         "flag_empty_after_clean": flag_empty_after_clean,
     }
