@@ -121,13 +121,6 @@ roles like sense/antisense or guide/tracr. Matches set `category =
 oligonucleotide`, populate `oligo_info`, and record details in
 `flags.oligo_*` with a flattened summary in `oligo_tokens_flat`.
 
-Cyclic nucleotides including `cAMP`, `cGMP`, `c-di-GMP`, and `cGAMP` are
-detected by dedicated patterns, normalised to canonical forms (e.g.
-`3',5'-cAMP`), and classified as small molecules with
-`small_molecule_info.subtype = cyclic_nucleotide`. Any accompanying isotope
-or fluorophore tags are stripped and logged before classification, ensuring
-they are not mistaken for oligonucleotides.
-
 Peptides are detected via several heuristics: polymer-style prefixes like
 `poly-Glu:Tyr`, explicit terms such as `peptide` or `polypeptide`, and
 sequences of one- or three-letter amino-acid codes (optionally bearing

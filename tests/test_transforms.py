@@ -7,9 +7,11 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
 import pytest
 
 from mylib.transforms import PATTERNS, normalize_name, _fix_spacing
+
 
 
 def test_isotope_flag() -> None:
@@ -37,6 +39,7 @@ def test_protective_group_sequence() -> None:
     res = normalize_name("H-Ala-Gly-OH")
     assert res["category"] == "peptide"
     assert res["peptide_info"]["type"] == "sequence_like"
+
 
 
 def test_noise_and_concentration_removal() -> None:
@@ -75,6 +78,7 @@ def test_spacing_compaction_after_flag_removal(connector: str) -> None:
 def test_repeated_connector_collapses() -> None:
     res = normalize_name("a - biotin - b")
     assert res["search_name"] == "a-b"
+
 
 
 def test_spacing_for_comma_and_decimal() -> None:
@@ -165,9 +169,11 @@ def test_removed_tokens_flat_empty() -> None:
     assert res["removed_tokens_flat"] == ""
 
 
+
 def test_oligo_tokens_flat_empty() -> None:
     res = normalize_name("aspirin")
     assert res["oligo_tokens_flat"] == ""
+
 
 
 def test_search_name_defaults_to_normalized() -> None:
@@ -209,8 +215,10 @@ def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
     res = normalize_name(text)
     assert res["search_name"] == expected
     assert res["flags"].get("isotope") == tokens
+
     # Ensure no isotopic labels remain after normalization
     assert PATTERNS["isotope"].findall(res["search_name"]) == []
+
 
 
 @pytest.mark.parametrize(
@@ -231,6 +239,7 @@ def test_expanded_fluorophore_tokens(text: str, expected: str, token: str) -> No
     assert res["search_name"] == expected
     assert res["flags"].get("fluorophore") == [token]
 
+
 @pytest.mark.parametrize(
     "text, composition",
     [
@@ -248,6 +257,7 @@ def test_poly_peptide_detection(text: str, composition: str) -> None:
 def test_polymer_non_peptide() -> None:
     res = normalize_name("polymer support resin")
     assert res["category"] == "small_molecule"
+
 
 
 @pytest.mark.parametrize(
