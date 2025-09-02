@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
+
 PUBCHEM_NAME_URL = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{}/cids/TXT"
 # JSON endpoints for richer metadata
 PUBCHEM_PROPERTY_URL = (
@@ -29,6 +30,7 @@ PUBCHEM_PROPERTY_URL = (
 )
 PUBCHEM_SYNONYM_URL = (
     "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{}/synonyms/JSON"
+
 )
 
 
@@ -61,7 +63,9 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
     str
         CID string or one of the sentinel messages described above.
 
+
     On network errors the function logs the exception and returns ``"unknown"``.
+
     """
 
     if len(name) < 5:
@@ -77,6 +81,7 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
         if response.status_code in {400, 404}:
             # Fallback: retry without the exact-match constraint which may
             # yield results for valid synonyms not recognised as exact names.
+
             logger.debug(
                 "Exact lookup failed for %s, retrying without name_type", name
             )
@@ -84,6 +89,7 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
     except requests.RequestException:
         logger.exception("Failed to query PubChem for %s", name)
         return "unknown"
+
 
     # PubChem returns HTTP 404 or 400 when no compound matches the query.
     if response.status_code in {400, 404}:
@@ -99,9 +105,11 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
     return lines[0]
 
 
+
 def fetch_pubchem_record(
     name: str, *, session: Optional[requests.Session] = None
 ) -> Dict[str, str]:
+
     """Return metadata for ``name`` from PubChem.
 
     The lookup first resolves ``name`` to a CID via :func:`fetch_pubchem_cid` and
@@ -125,8 +133,10 @@ def fetch_pubchem_record(
     Returns
     -------
     dict
+
         Mapping of field name to value as described above. Network failures
         during property or synonym retrieval are logged and yield empty strings.
+
     """
 
     cid = fetch_pubchem_cid(name, session=session)
@@ -161,6 +171,7 @@ def fetch_pubchem_record(
                 prop_json.get("PropertyTable", {})
                 .get("Properties", [{}])[0]
             )
+
             prop_data = {
                 k: str(props.get(k, ""))
                 for k in [
@@ -172,11 +183,14 @@ def fetch_pubchem_record(
                     "IUPACName",
                 ]
             }
+
         else:
             logger.info("No properties found for CID %s", cid)
     except requests.RequestException:
         logger.exception("Failed to fetch properties for CID %s", cid)
+
         prop_data = {}
+
 
     # ------------------------------------------------------------------
     # Fetch synonyms
@@ -202,6 +216,7 @@ def fetch_pubchem_record(
         logger.exception("Failed to fetch synonyms for CID %s", cid)
         synonyms = ""
 
+
     return {
         "pubchem_cid": cid,
         "canonical_smiles": prop_data.get("CanonicalSMILES", ""),
@@ -215,6 +230,7 @@ def fetch_pubchem_record(
 
 
 def annotate_pubchem_info(
+
     df: pd.DataFrame,
     *,
     name_column: str = "search_name",
