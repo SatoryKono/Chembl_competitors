@@ -23,7 +23,7 @@ class DummyResponse:
         self.status_code = status_code
 
     def raise_for_status(self) -> None:
-        if self.status_code >= 400 and self.status_code != 404:
+        if self.status_code >= 400 and self.status_code not in {400, 404}:
             raise requests.HTTPError(f"HTTP {self.status_code}")
 
 
@@ -57,6 +57,12 @@ def test_fetch_pubchem_cid_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
     monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse("", 404))
     assert fetch_pubchem_cid("unknowncompound", session=sess) == "unknown"
+
+
+def test_fetch_pubchem_cid_bad_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    sess = requests.Session()
+    monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse("", 400))
+    assert fetch_pubchem_cid("badname", session=sess) == "unknown"
 
 
 # ---------------------------------------------------------------------------

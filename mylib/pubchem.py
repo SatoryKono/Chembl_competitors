@@ -73,7 +73,10 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
         logger.exception("Failed to query PubChem for %s", name)
         raise
 
-    if response.status_code == 404:
+    # PubChem returns HTTP 404 or 400 for unknown names. Both should
+    # map to our "unknown" sentinel rather than raising an exception
+    # for the user.
+    if response.status_code in {400, 404}:
         logger.info("No PubChem entry found for %s", name)
         return "unknown"
 
