@@ -14,6 +14,8 @@ from urllib.parse import quote
 
 import requests
 import pandas as pd
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,40 @@ PUBCHEM_SYNONYM_URL = (
 
 )
 
+# ---------------------------------------------------------------------------
+# Session helper
+# ---------------------------------------------------------------------------
+
+
+def _get_session(session: Optional[requests.Session] = None) -> requests.Session:
+    """Return a requests session with retry logic.
+
+    Parameters
+    ----------
+    session:
+        Existing session to reuse. If ``None`` a new session configured with
+        retries for common transient network errors is created.
+
+    Returns
+    -------
+    requests.Session
+        Session instance ready for use.
+    """
+
+    if session is not None:
+        return session
+
+    retries = Retry(
+        total=3,
+        backoff_factor=0.3,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    sess = requests.Session()
+    sess.mount("http://", adapter)
+    sess.mount("https://", adapter)
+    return sess
 
 # ---------------------------------------------------------------------------
 # Core functionality
@@ -73,7 +109,7 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
         logger.debug("Skipping lookup for short name: %s", name)
         return "compound name is too short"
 
-    sess = session or requests.Session()
+    sess = _get_session(session)
     url = PUBCHEM_NAME_URL.format(quote(name))
     logger.debug("Requesting PubChem CID for %s", name)
     try:
@@ -147,7 +183,7 @@ def fetch_pubchem_record(
             "synonyms": cid,
         }
 
-    sess = session or requests.Session()
+    sess = _get_session(session)
 
     # ------------------------------------------------------------------
     # Fetch compound properties
@@ -178,9 +214,13 @@ def fetch_pubchem_record(
 
         else:
             logger.info("No properties found for CID %s", cid)
+   
     except requests.RequestException:
         logger.exception("Failed to fetch properties for CID %s", cid)
-        raise
+        prop_data = {}
+    except Exception:
+        logger.exception("Unexpected error fetching properties for CID %s", cid)
+        prop_data = {}
 
 
     # ------------------------------------------------------------------
@@ -208,7 +248,10 @@ def fetch_pubchem_record(
             logger.info("No synonyms found for CID %s", cid)
     except requests.RequestException:
         logger.exception("Failed to fetch synonyms for CID %s", cid)
-        raise
+        synonyms = ""
+    except Exception:
+        logger.exception("Unexpected error fetching synonyms for CID %s", cid)
+        synonyms = ""
 
 
     return {
@@ -261,7 +304,7 @@ def annotate_pubchem_info(
         logger.error(msg)
         raise ValueError(msg)
 
-    sess = session or requests.Session()
+    sess = _get_session(session)
     logger.debug("Annotating %d records with PubChem metadata", len(df))
     df = df.copy()
     info = df[name_column].apply(lambda n: fetch_pubchem_record(str(n), session=sess))
