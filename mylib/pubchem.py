@@ -23,13 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 PUBCHEM_NAME_URL = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{}/cids/TXT"
-
+# JSON endpoints for richer metadata
 PUBCHEM_PROPERTY_URL = (
     "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{}/property/"
-    "CanonicalSMILES,InChI,InChIKey,MolecularFormula,MolecularWeight,IUPACName/TXT"
+    "CanonicalSMILES,InChI,InChIKey,MolecularFormula,MolecularWeight,IUPACName/JSON"
 )
 PUBCHEM_SYNONYM_URL = (
-    "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{}/synonyms/TXT"
+    "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{}/synonyms/JSON"
+
 )
 
 
@@ -157,13 +158,24 @@ def fetch_pubchem_record(
         prop_resp = sess.get(PUBCHEM_PROPERTY_URL.format(cid), timeout=10)
         if prop_resp.status_code not in {400, 404}:
             prop_resp.raise_for_status()
-            prop_lines = [
-                line.strip() for line in prop_resp.text.splitlines() if line.strip()
-            ]
-            if len(prop_lines) >= 2:
-                headers = prop_lines[0].split("\t")
-                values = prop_lines[1].split("\t")
-                prop_data = dict(zip(headers, values))
+
+            try:
+                prop_json = prop_resp.json()
+            except ValueError:
+                prop_json = {}
+            props = (
+                prop_json.get("PropertyTable", {})
+                .get("Properties", [{}])[0]
+            )
+            prop_data = {k: str(props.get(k, "")) for k in [
+                "CanonicalSMILES",
+                "InChI",
+                "InChIKey",
+                "MolecularFormula",
+                "MolecularWeight",
+                "IUPACName",
+            ]}
+
         else:
             logger.info("No properties found for CID %s", cid)
     except requests.RequestException:
@@ -174,24 +186,30 @@ def fetch_pubchem_record(
     # ------------------------------------------------------------------
     # Fetch synonyms
     # ------------------------------------------------------------------
+    synonyms = ""
 
-    syn_lines: list[str] = []
     try:
         syn_resp = sess.get(PUBCHEM_SYNONYM_URL.format(cid), timeout=10)
         if syn_resp.status_code not in {400, 404}:
             syn_resp.raise_for_status()
-            syn_lines = [
-                line.strip() for line in syn_resp.text.splitlines() if line.strip()
-            ]
-            if syn_lines and syn_lines[0].isdigit():
-                syn_lines = syn_lines[1:]
+
+            try:
+                syn_json = syn_resp.json()
+            except ValueError:
+                syn_json = {}
+            syn_list = (
+                syn_json.get("InformationList", {})
+                .get("Information", [{}])[0]
+                .get("Synonym", [])
+            )
+            synonyms = "|".join(syn_list)
+
         else:
             logger.info("No synonyms found for CID %s", cid)
     except requests.RequestException:
         logger.exception("Failed to fetch synonyms for CID %s", cid)
         raise
 
-    synonyms = "|".join(syn_lines)
 
     return {
         "pubchem_cid": cid,
