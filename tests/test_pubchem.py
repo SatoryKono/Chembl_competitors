@@ -31,6 +31,7 @@ class DummyResponse:
 # fetch_pubchem_cid tests
 # ---------------------------------------------------------------------------
 
+
 def test_fetch_pubchem_cid_short_name(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
 
@@ -82,6 +83,7 @@ def test_fetch_pubchem_cid_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
 # fetch_pubchem_record tests
 # ---------------------------------------------------------------------------
 
+
 def test_fetch_pubchem_record(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
 
@@ -112,10 +114,59 @@ def test_fetch_pubchem_record(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec["synonyms"] == "aspirin|acetylsalicylic acid"
 
 
+
+def test_fetch_pubchem_record_handles_400(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Missing properties or synonyms return empty strings rather than crash."""
+
+    sess = requests.Session()
+
+    # CID resolution succeeds
+    monkeypatch.setattr("mylib.pubchem.fetch_pubchem_cid", lambda *a, **k: "42")
+
+    responses = [
+        DummyResponse("", 400),  # property request returns 400
+        DummyResponse("42\nname1\nname2\n"),  # synonyms succeed
+    ]
+
+    def fake_get(url: str, *a, **k):
+        return responses.pop(0)
+
+    monkeypatch.setattr(sess, "get", fake_get)
+
+    rec = fetch_pubchem_record("foo", session=sess)
+    assert rec["canonical_smiles"] == ""
+    assert rec["synonyms"] == "name1|name2"
+
+
+def test_fetch_pubchem_record_handles_synonym_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sess = requests.Session()
+
+    monkeypatch.setattr("mylib.pubchem.fetch_pubchem_cid", lambda *a, **k: "42")
+
+    prop_text = (
+        "CID\tCanonicalSMILES\tInChI\tInChIKey\tMolecularFormula\tMolecularWeight\tIUPACName\n"
+        "42\tS\tI\tK\tF\tW\tU\n"
+    )
+
+    responses = [DummyResponse(prop_text), DummyResponse("", 400)]
+
+    def fake_get(url: str, *a, **k):
+        return responses.pop(0)
+
+    monkeypatch.setattr(sess, "get", fake_get)
+
+    rec = fetch_pubchem_record("foo", session=sess)
+    assert rec["synonyms"] == ""
+
+
+
 # ---------------------------------------------------------------------------
 # annotate_pubchem_info tests
 # ---------------------------------------------------------------------------
 
+m
 def test_annotate_pubchem_info(monkeypatch: pytest.MonkeyPatch) -> None:
     df = pd.DataFrame({"search_name": ["aspirin", "abcde"]})
 

@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-PUBCHEM_NAME_URL = (
-    "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{}/cids/TXT"
-)
+
+PUBCHEM_NAME_URL = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{}/cids/TXT"
+
 PUBCHEM_PROPERTY_URL = (
     "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{}/property/"
     "CanonicalSMILES,InChI,InChIKey,MolecularFormula,MolecularWeight,IUPACName/TXT"
@@ -36,6 +36,7 @@ PUBCHEM_SYNONYM_URL = (
 # ---------------------------------------------------------------------------
 # Core functionality
 # ---------------------------------------------------------------------------
+
 
 def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) -> str:
     """Return PubChem CID for ``name`` using an exact match.
@@ -100,7 +101,11 @@ def fetch_pubchem_cid(name: str, *, session: Optional[requests.Session] = None) 
     return lines[0]
 
 
-def fetch_pubchem_record(name: str, *, session: Optional[requests.Session] = None) -> Dict[str, str]:
+
+def fetch_pubchem_record(
+    name: str, *, session: Optional[requests.Session] = None
+) -> Dict[str, str]:
+
     """Return metadata for ``name`` from PubChem.
 
     The lookup first resolves ``name`` to a CID via :func:`fetch_pubchem_cid` and
@@ -146,24 +151,46 @@ def fetch_pubchem_record(name: str, *, session: Optional[requests.Session] = Non
     # ------------------------------------------------------------------
     # Fetch compound properties
     # ------------------------------------------------------------------
-    prop_resp = sess.get(PUBCHEM_PROPERTY_URL.format(cid), timeout=10)
-    prop_resp.raise_for_status()
-    prop_lines = [line.strip() for line in prop_resp.text.splitlines() if line.strip()]
-    headers: list[str] = []
-    values: list[str] = []
-    if len(prop_lines) >= 2:
-        headers = prop_lines[0].split("\t")
-        values = prop_lines[1].split("\t")
-    prop_data = dict(zip(headers, values))
+
+    prop_data: dict[str, str] = {}
+    try:
+        prop_resp = sess.get(PUBCHEM_PROPERTY_URL.format(cid), timeout=10)
+        if prop_resp.status_code not in {400, 404}:
+            prop_resp.raise_for_status()
+            prop_lines = [
+                line.strip() for line in prop_resp.text.splitlines() if line.strip()
+            ]
+            if len(prop_lines) >= 2:
+                headers = prop_lines[0].split("\t")
+                values = prop_lines[1].split("\t")
+                prop_data = dict(zip(headers, values))
+        else:
+            logger.info("No properties found for CID %s", cid)
+    except requests.RequestException:
+        logger.exception("Failed to fetch properties for CID %s", cid)
+        raise
+
 
     # ------------------------------------------------------------------
     # Fetch synonyms
     # ------------------------------------------------------------------
-    syn_resp = sess.get(PUBCHEM_SYNONYM_URL.format(cid), timeout=10)
-    syn_resp.raise_for_status()
-    syn_lines = [line.strip() for line in syn_resp.text.splitlines() if line.strip()]
-    if syn_lines and syn_lines[0].isdigit():
-        syn_lines = syn_lines[1:]
+
+    syn_lines: list[str] = []
+    try:
+        syn_resp = sess.get(PUBCHEM_SYNONYM_URL.format(cid), timeout=10)
+        if syn_resp.status_code not in {400, 404}:
+            syn_resp.raise_for_status()
+            syn_lines = [
+                line.strip() for line in syn_resp.text.splitlines() if line.strip()
+            ]
+            if syn_lines and syn_lines[0].isdigit():
+                syn_lines = syn_lines[1:]
+        else:
+            logger.info("No synonyms found for CID %s", cid)
+    except requests.RequestException:
+        logger.exception("Failed to fetch synonyms for CID %s", cid)
+        raise
+
     synonyms = "|".join(syn_lines)
 
     return {
@@ -179,7 +206,12 @@ def fetch_pubchem_record(name: str, *, session: Optional[requests.Session] = Non
 
 
 def annotate_pubchem_info(
-    df: pd.DataFrame, *, name_column: str = "search_name", session: Optional[requests.Session] = None
+
+    df: pd.DataFrame,
+    *,
+    name_column: str = "search_name",
+    session: Optional[requests.Session] = None,
+
 ) -> pd.DataFrame:
     """Annotate a DataFrame with PubChem metadata.
 
