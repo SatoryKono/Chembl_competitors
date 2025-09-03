@@ -3,7 +3,7 @@
 
 from .cleanup_competitor_names import normalize_name
 from .cleanup_competitor_io_validation import validate_input, check_issues, read_input_csv, write_output_csv
-from .pubchem_library import fetch_pubchem_cid, annotate_pubchem_info
+from .pubchem_library import fetch_pubchem_cid, annotate_pubchem_info, build_compound_name_dictionary
 
 
 __all__ = [
@@ -22,5 +22,6 @@ __all__ = [
     "process_compound",
     "fetch_pubchem_cid", 
     "annotate_pubchem_info",
+    "build_compound_name_dictionary"
     "Properties",
 ]
