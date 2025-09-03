@@ -44,6 +44,18 @@ HYDRATE_TOKENS = [
 ]
 
 # Regex patterns for various flags
+ISOTOPE_PATTERN = r"""
+(?<!\w)
+(?:
+    \[\s*(?:3H|2H|D|T|13C|14C|15N|18F|32P|86Rb|125I)\s*\]
+  | (?:3H|2H|13C|14C|15N|18F|32P|86Rb|125I|D|T)
+  | d\d+
+  | U-?13C
+  | tritiated|deuterated
+)
+(?!\w)
+"""
+
 PATTERNS: Dict[str, re.Pattern[str]] = {
     "fluorophore": re.compile(
         r"""
