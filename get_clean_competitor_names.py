@@ -7,7 +7,7 @@ import logging
 
 import pandas as pd
 
-from mylib import annotate_pubchem_info
+from library import annotate_pubchem_info
 
 
 # ---------------------------------------------------------------------------
