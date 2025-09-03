@@ -7,9 +7,13 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
+
 import pytest
 
-from mylib.transforms import PATTERNS, normalize_name, _fix_spacing
+from library.cleanup_competitor_names import PATTERNS, _fix_spacing, normalize_name
+
+
 
 
 def test_isotope_flag() -> None:
@@ -199,7 +203,6 @@ def test_removed_tokens_flat_empty() -> None:
     res = normalize_name("aspirin")
     assert res["removed_tokens_flat"] == ""
 
-
 def test_oligo_tokens_flat_empty() -> None:
     res = normalize_name("aspirin")
     assert res["oligo_tokens_flat"] == ""
@@ -325,6 +328,7 @@ def test_nucleotide_not_peptide() -> None:
 
 
 @pytest.mark.parametrize(
+
     "text", [
         "gly-pro-pna",
         "pyroglu-pro-arg-pna",
