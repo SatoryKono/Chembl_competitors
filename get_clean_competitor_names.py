@@ -51,7 +51,7 @@ def main() -> None:
     out_df.to_csv(args.output, sep=args.sep, encoding=args.encoding, index=False)
 
     name_dict_df = build_compound_name_dictionary(out_df)
-    name_dict_df.to_csv("compound_name_dictionary.csv", index=False)
+    name_dict_df.to_csv("compound_name_dictionary2.csv", index=False)
 
 
 if __name__ == "__main__":
