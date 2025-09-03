@@ -3,7 +3,7 @@
 
 from .cleanup_competitor_names import normalize_name
 from .cleanup_competitor_io_validation import validate_input, check_issues, read_input_csv, write_output_csv
-from .pubchem import fetch_pubchem_cid, annotate_pubchem_info
+from .pubchem_library import fetch_pubchem_cid, annotate_pubchem_info
 
 
 __all__ = [
@@ -12,6 +12,15 @@ __all__ = [
     "normalize_name",
     "validate_input",
     "check_issues",
-    "fetch_pubchem_cid",
+    "url_encode",
+    "make_request",
+    "validate_cid",
+    "get_cid",
+    "get_all_cid",
+    "get_standard_name",
+    "get_properties",
+    "process_compound",
+    "fetch_pubchem_cid", 
     "annotate_pubchem_info",
+    "Properties",
 ]
