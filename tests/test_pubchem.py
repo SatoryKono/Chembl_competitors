@@ -18,7 +18,9 @@ from mylib.pubchem import fetch_pubchem_cid, fetch_pubchem_record
 class DummyResponse:
     """Minimal response stub for :mod:`requests` Session.get."""
 
-    def __init__(self, *, text: str = "", json_data: dict | None = None, status_code: int = 200) -> None:
+    def __init__(
+        self, *, text: str = "", json_data: dict | None = None, status_code: int = 200
+    ) -> None:
         self.text = text
         self._json = json_data or {}
         self.status_code = status_code
@@ -311,3 +313,4 @@ def test_annotate_pubchem_info(monkeypatch: pytest.MonkeyPatch) -> None:
     out_df = annotate_pubchem_info(df, session=requests.Session())
     assert out_df["pubchem_cid"].tolist() == ["111", "222"]
     assert out_df["synonyms"].iloc[0] == "aspirin|aspirin2"
+
