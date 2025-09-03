@@ -16,39 +16,28 @@ from mylib.pubchem import fetch_pubchem_cid, fetch_pubchem_record
 
 
 class DummyResponse:
-<<<<<<< HEAD
     """Minimal response stub for :mod:`requests` Session.get."""
 
-    def __init__(self, *, text: str = "", json_data: dict | None = None, status_code: int = 200) -> None:
+    def __init__(
+        self, *, text: str = "", json_data: dict | None = None, status_code: int = 200
+    ) -> None:
         self.text = text
         self._json = json_data or {}
-=======
-    """Minimal response stub for requests Session.get."""
-
-    def __init__(self, text: str, status_code: int = 200) -> None:
-        self.text = text
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
         self.status_code = status_code
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400 and self.status_code not in {400, 404}:
             raise requests.HTTPError(f"HTTP {self.status_code}")
 
-<<<<<<< HEAD
     def json(self) -> dict:
         return self._json
 
-=======
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
 
 # ---------------------------------------------------------------------------
 # fetch_pubchem_cid tests
 # ---------------------------------------------------------------------------
 
-<<<<<<< HEAD
 
-=======
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
 def test_fetch_pubchem_cid_short_name(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
 
@@ -61,55 +50,36 @@ def test_fetch_pubchem_cid_short_name(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_fetch_pubchem_cid_single(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
-<<<<<<< HEAD
     monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse(text="123\n"))
-=======
-    monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse("123\n"))
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
     assert fetch_pubchem_cid("aspirin", session=sess) == "123"
 
 
 def test_fetch_pubchem_cid_multiple(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
-<<<<<<< HEAD
-
     monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse(text="1\n2\n"))
-
-=======
-    monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse("1\n2\n"))
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
     assert fetch_pubchem_cid("foo bar", session=sess) == "multiply"
 
 
 def test_fetch_pubchem_cid_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
-<<<<<<< HEAD
-    monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse(text="", status_code=404))
-=======
-    monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse("", 404))
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
+    monkeypatch.setattr(
+        sess, "get", lambda *args, **kwargs: DummyResponse(text="", status_code=404)
+    )
     assert fetch_pubchem_cid("unknowncompound", session=sess) == "unknown"
 
 
 def test_fetch_pubchem_cid_bad_request(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
-<<<<<<< HEAD
-    monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse(text="", status_code=400))
-=======
-    monkeypatch.setattr(sess, "get", lambda *args, **kwargs: DummyResponse("", 400))
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
+    monkeypatch.setattr(
+        sess, "get", lambda *args, **kwargs: DummyResponse(text="", status_code=400)
+    )
     assert fetch_pubchem_cid("badname", session=sess) == "unknown"
 
 
 def test_fetch_pubchem_cid_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """The lookup falls back to a broader query when exact matching fails."""
     sess = requests.Session()
-<<<<<<< HEAD
     responses = [DummyResponse(text="", status_code=404), DummyResponse(text="789\n")]
-=======
-
-    responses = [DummyResponse("", 404), DummyResponse("789\n")]
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
 
     def fake_get(*args, **kwargs):
         return responses.pop(0)
@@ -118,7 +88,6 @@ def test_fetch_pubchem_cid_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     assert fetch_pubchem_cid("almorexant", session=sess) == "789"
 
 
-<<<<<<< HEAD
 def test_fetch_pubchem_cid_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Network issues return 'unknown' rather than raising."""
     sess = requests.Session()
@@ -130,23 +99,17 @@ def test_fetch_pubchem_cid_connection_error(monkeypatch: pytest.MonkeyPatch) -> 
     assert fetch_pubchem_cid("aspirin", session=sess) == "unknown"
 
 
-=======
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
 # ---------------------------------------------------------------------------
 # fetch_pubchem_record tests
 # ---------------------------------------------------------------------------
 
-<<<<<<< HEAD
 
-=======
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
 def test_fetch_pubchem_record(monkeypatch: pytest.MonkeyPatch) -> None:
     sess = requests.Session()
 
     # Stub CID resolution
     monkeypatch.setattr("mylib.pubchem.fetch_pubchem_cid", lambda *a, **k: "2244")
 
-<<<<<<< HEAD
     prop_json = {
         "PropertyTable": {
             "Properties": [
@@ -174,15 +137,6 @@ def test_fetch_pubchem_record(monkeypatch: pytest.MonkeyPatch) -> None:
         DummyResponse(json_data=prop_json),
         DummyResponse(json_data=syn_json),
     ]
-=======
-    prop_text = (
-        "CID\tCanonicalSMILES\tInChI\tInChIKey\tMolecularFormula\tMolecularWeight\tIUPACName\n"
-        "2244\tSMILES\tInChI\tKEY\tC9H8O4\t180.16\tName\n"
-    )
-    syn_text = "2244\naspirin\nacetylsalicylic acid\n"  # first line numeric removed
-
-    responses = [DummyResponse(prop_text), DummyResponse(syn_text)]
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
 
     def fake_get(url: str, *a, **k):
         return responses.pop(0)
@@ -200,7 +154,6 @@ def test_fetch_pubchem_record(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec["synonyms"] == "aspirin|acetylsalicylic acid"
 
 
-<<<<<<< HEAD
 def test_fetch_pubchem_record_handles_400(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing properties or synonyms return empty strings rather than crash."""
 
@@ -340,16 +293,11 @@ def test_fetch_pubchem_record_synonym_exception(
     assert rec["synonyms"] == ""
 
 
-=======
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
 # ---------------------------------------------------------------------------
 # annotate_pubchem_info tests
 # ---------------------------------------------------------------------------
 
-<<<<<<< HEAD
 
-=======
->>>>>>> origin/codex/implement-pubchem-search-for-csv-compounds
 def test_annotate_pubchem_info(monkeypatch: pytest.MonkeyPatch) -> None:
     df = pd.DataFrame({"search_name": ["aspirin", "abcde"]})
 
@@ -370,3 +318,4 @@ def test_annotate_pubchem_info(monkeypatch: pytest.MonkeyPatch) -> None:
     out_df = annotate_pubchem_info(df, session=requests.Session())
     assert out_df["pubchem_cid"].tolist() == ["111", "222"]
     assert out_df["synonyms"].iloc[0] == "aspirin|aspirin2"
+

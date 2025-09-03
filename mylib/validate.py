@@ -36,14 +36,26 @@ def validate_input(df: pd.DataFrame, required: Iterable[str] | None = None) -> N
         raise ValueError(msg)
 
 
+def check_issues(df: pd.DataFrame) -> pd.DataFrame:
     """Run basic issue checks on normalized output.
 
-    The function adds an ``issues`` column where each row lists pipe-separated
-    problem codes. Currently supported codes are ``oligo_missed``,
-    ``oligo_parse_failed``, ``oligo_mod_unparsed`` and ``oligo_len_suspect``.
+    The function adds an ``issues`` column where each row lists
+    pipe-separated problem codes. Currently supported codes are
+    ``oligo_missed``, ``oligo_parse_failed``, ``oligo_mod_unparsed`` and
+    ``oligo_len_suspect``.
+
+    Parameters
+    ----------
+    df:
+        Normalised DataFrame as produced by the transformation pipeline.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Copy of ``df`` with an additional ``issues`` column.
     """
 
-    issue_list = []
+    issue_list: list[str] = []
     for _, row in df.iterrows():
         row_issues: list[str] = []
         flags = row.get("flags", {})
