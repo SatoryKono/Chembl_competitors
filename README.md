@@ -11,7 +11,9 @@ padding, connectors (`-`, `/`, `:`, `+`) have no surrounding spaces, semicolons
 and commas carry a single space on the right, and primes cling to neighboring
 tokens.
 
+
 Orphaned or empty brackets are removed once all annotations have been stripped.
+
 
 
 ```bash
@@ -27,7 +29,8 @@ pip install black ruff mypy pytest
 ## Usage
 
 ```bash
-python get_clean_competitor_names.py --input examples1.csv --output out.csv
+
+
 ```
 
 ### Arguments
