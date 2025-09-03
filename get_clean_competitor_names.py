@@ -7,7 +7,8 @@ import logging
 
 import pandas as pd
 
-from library import annotate_pubchem_info
+from mylib import annotate_pubchem_info
+from pubchem_library import build_compound_name_dictionary
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +49,9 @@ def main() -> None:
     df = pd.read_csv(args.input, sep=args.sep, encoding=args.encoding)
     out_df = annotate_pubchem_info(df, name_column="search_name")
     out_df.to_csv(args.output, sep=args.sep, encoding=args.encoding, index=False)
+
+    name_dict_df = build_compound_name_dictionary(out_df)
+    name_dict_df.to_csv("compound_name_dictionary.csv", index=False)
 
 
 if __name__ == "__main__":
