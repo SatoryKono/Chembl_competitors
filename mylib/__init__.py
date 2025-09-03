@@ -1,8 +1,8 @@
 """Utility library for chemical name normalization."""
 
-from .io_utils import read_input_csv, write_output_csv
-from .transforms import normalize_name
-from .validate import validate_input, check_issues
+
+from .cleanup_competitor_names import normalize_name
+from .cleanup_competitor_io_validation import validate_input, check_issues, read_input_csv, write_output_csv
 from .pubchem import fetch_pubchem_cid, annotate_pubchem_info
 
 
