@@ -161,9 +161,8 @@ Output includes columns:
 
 Isotopic labels such as `[3H]`, `[125I]`, `14C`, `18F`, bare prefixes like `D`
 or `T`, `d5`-style deuteration, `deuterated`/`tritiated` descriptors, and
-`U-13C` are canonicalized (e.g., `[i125]` → `[125I]`) and removed from the
-normalized name with the original tokens recorded under `flags.isotope`.
-
+`U-13C` are removed from the normalized name and logged under
+`flags.isotope`.
 
 Salts and mineral acids such as hydrochloride, HCl, HBr, HNO3 or H2SO4 are
 removed from the normalized name and logged under `flags.salt`. Flattened
@@ -231,6 +230,10 @@ Peptides are detected via several heuristics: polymer-style prefixes like
 sequences of one- or three-letter amino-acid codes (optionally bearing
 protective groups like `H-`, `Ac-`, `Boc-`, `-OH`, or `-NH2`, as well as
 chromophore/fluorophore suffixes such as `-pNA` or `-AMC`. When detected,
+Peptides are detected via several heuristics: polymer-style prefixes like
+`poly-Glu:Tyr`, explicit terms such as `peptide` or `polypeptide`, and
+sequences of one- or three-letter amino-acid codes (optionally bearing
+protective groups like `H-`, `Ac-`, `Boc-`, `-OH`, or `-NH2`). When detected,
 the output sets `category = peptide` and populates `peptide_info` with the
 peptide type and, for polymer forms, the normalized composition. Generic
 materials like "polymer support resin" are not misclassified as peptides

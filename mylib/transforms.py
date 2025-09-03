@@ -46,12 +46,39 @@ HYDRATE_TOKENS = [
 # Regex patterns for various flags
 PATTERNS: Dict[str, re.Pattern[str]] = {
     "fluorophore": re.compile(
-        r"\b(FITC|Alexa(?:\sFluor)?\s?\d+|Cy\d+|Rhodamine|TRITC|DAPI|Texas\sRed|PE|PerCP|APC)\b",
-        re.IGNORECASE,
+        r"""
+        \b(
+            FITC|
+            FAM|
+            Alexa(?:\s|-)?Fluor[\s-]?\d+|
+            HiLyte(?:\s|-)?(?:Fluor)?[\s-]?\d+|
+            DyLight[\s-]?\d+|
+            CF[\s-]?\d+|
+            Janelia(?:\s|-)?Fluor[\s-]?\d+|
+            BODIPY(?:[-/][A-Za-z0-9/]+|\s(?:[A-Za-z]{1,3}|[0-9/]+)){0,2}|
+            Cy\d+|
+            Rhodamine|
+            BHQ\d*|
+            TRITC|
+            DAPI|
+            Texas\sRed|
+            PE|
+            PerCP|
+            APC
+        )\b
+        """,
+        re.IGNORECASE | re.VERBOSE,
     ),
     "isotope": re.compile(
-        r"(?<!\w)(?:\[\d+[A-Za-z]\]|\d+[A-Za-z]|[dD]\d+|U-?13C|tritiated|deuterated)(?!\w)",
-        re.IGNORECASE,
+        r"""
+        (
+            \[\s*\d{1,3}\s*[A-Z][a-z]?\s*\]                           # bracketed forms
+            |(?<![A-Za-z0-9])(?:3H|2H|D|T|13C|14C|15N|18F|125I)(?![A-Za-z0-9]) # bare prefixes
+            |\bd\d+\b                                                    # d-number deuteration
+            |\b(?:deuterated|tritiated|U-?13C)\b                          # words
+        )
+        """,
+        re.IGNORECASE | re.VERBOSE,
     ),
     "biotin": re.compile(r"\bbiotin(?:ylated)?\b", re.IGNORECASE),
     "salt": re.compile(
@@ -62,11 +89,34 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
         r"\b(" + "|".join(map(re.escape, HYDRATE_TOKENS)) + r")\b",
         re.IGNORECASE,
     ),
-    "noise": re.compile(
-        r"\b(solution|aqueous|buffer|USP|EP|ACS|reagent|analytical|grade|powder|crystalline|purity|lyophilized)\b",
-        re.IGNORECASE,
-    ),
 }
+
+# Non-structural descriptor tokens to remove in two passes
+NOISE_WORDS = [
+    "solution",
+    "soln",
+    "aqueous",
+    r"aq\.",
+    "stock",
+    "buffer",
+    "USP",
+    "EP",
+    "ACS",
+    "reagent",
+    "analytical",
+    "grade",
+    "crystal(?:line)?",
+    "powder",
+    "PBS",
+]
+NOISE_WITH_ID = r"(?:lot|cat(?:alog)?|code|ref)[\s:_-]*\w+"
+PURITY_PATTERN = r"≥?\s*\d{1,2}\s*%?\s*purity"
+NOISE_REGEX = re.compile(
+    rf"{NOISE_WITH_ID}|\b(?:{'|'.join(NOISE_WORDS)})\b|{PURITY_PATTERN}",
+    re.IGNORECASE,
+)
+
+STOPWORDS = {"in", "of", "and"}
 
 AA1 = set("ACDEFGHIKLMNPQRSTVWY")
 AA3 = {
@@ -91,6 +141,71 @@ AA3 = {
     "Trp",
     "Tyr",
 }
+
+# Keywords and patterns for oligonucleotide detection
+OLIGO_KEYWORDS = [
+    "oligo",
+    "oligonucleotide",
+    "primer",
+    "probe",
+    "aptamer",
+    "sirna",
+    "shrna",
+    "mirna",
+    "antisense",
+    "aso",
+    "morpholino",
+    "pna",
+    "lna",
+    "grna",
+    "sgrna",
+    "crrna",
+    "tracrrna",
+    "ribo",
+    "g-block",
+    "gene fragment",
+    "dna",
+    "rna",
+    "guide",
+    "target",
+    "protospacer",
+    "pam",
+]
+
+NUCLEO_PATTERN = re.compile(r"\b[ACGTURYKMSWBDHVN]{8,}\b", re.IGNORECASE)
+ROLE_PATTERN = re.compile(
+    r"(sense|antisense|guide|tracrrna|crrna)[:\s]+([-ACGTURYKMSWBDHVN\s]+)",
+    re.IGNORECASE,
+)
+SLASH_MOD_PATTERN = re.compile(r"/([^/]+)/")
+
+
+def _has_oligo_signal(text: str) -> bool:
+    """Return True if text contains oligonucleotide hints."""
+
+    lower = text.lower()
+    if re.search(r"\b(" + "|".join(map(re.escape, OLIGO_KEYWORDS)) + r")\b", lower):
+        return True
+    if SLASH_MOD_PATTERN.search(text):
+        return True
+    if NUCLEO_PATTERN.search(text):
+        return True
+    return False
+
+
+def _flatten_oligo_flags(flags: Dict[str, object]) -> str:
+    """Flatten oligo-related flags into a pipe-delimited string."""
+
+    parts: List[str] = []
+    if flags.get("oligo_type"):
+        parts.append(f"oligo_type:{flags['oligo_type']}")
+    for token in flags.get("oligo_mods", []) or []:
+        parts.append(f"oligo_mod:{token}")
+    for role in flags.get("oligo_roles", []) or []:
+        parts.append(f"oligo_role:{role}")
+    if "oligo_len_total" in flags:
+        parts.append(f"oligo_len_total:{flags['oligo_len_total']}")
+    return "|".join(parts)
 
 
 def _flatten_flags(flags: Dict[str, List[str]]) -> str:
@@ -124,9 +239,42 @@ def _unicode_normalize(text: str) -> str:
 
 
 def _fix_spacing(text: str) -> str:
-    """Remove spaces around punctuation like '-', '/', ':', '+'."""
+    """Canonicalize spacing around common punctuation.
 
-    return re.sub(r"\s*([-/:+;\,])\s*", r"\1", text)
+    The transformations are applied sequentially to mirror the specification
+    in the user instructions. Only the listed punctuation characters are
+    affected; other in-line punctuation remains untouched.
+    """
+
+    # 0) Normalize various dash characters to a simple hyphen
+    text = re.sub(r"[\u2013\u2014\u2212]", "-", text)
+
+    # 1) Remove spaces before closing brackets and after opening brackets
+    text = re.sub(r"\s+([)\]\}])", r"\1", text)
+    text = re.sub(r"([(\[\{])\s+", r"\1", text)
+
+    # 2) Tighten connector punctuation
+    text = re.sub(r"\s*-\s*", "-", text)
+    text = re.sub(r"\s*/\s*", "/", text)
+    text = re.sub(r"\s*:\s*", ":", text)
+    text = re.sub(r"\s*\+\s*", "+", text)
+    text = re.sub(r"\s*;\s*", "; ", text)
+
+    # 3) Primes/apostrophes cling to adjacent tokens
+    text = re.sub(r"\s*(['\u2032])\s*", r"\1", text)
+
+    # 4) Commas: numeric enumerations keep tight format, lists get a space
+    text = re.sub(r"(?<=\d)\s*,\s*(?=\d)", ",", text)
+    text = re.sub(r"(?<!\d)\s*,\s*(?!\d)", ", ", text)
+    text = re.sub(r",\s+([)\]\}])", r",\1", text)
+
+    # 5) Remove space before trailing hyphens
+    text = re.sub(r"\s+-\b", "-", text)
+
+    # 6) Collapse repeated spaces and trim
+    text = re.sub(r"\s{2,}", " ", text).strip()
+
+    return text
 
 
 def _remove_concentrations(text: str, flags: Dict[str, List[str]]) -> str:
@@ -159,11 +307,177 @@ def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     return text
 
 
+def _remove_noise_descriptors(text: str, flags: Dict[str, List[str]]) -> str:
+    """Remove non-structural descriptors inside and outside brackets."""
+
+    def _log_noise(match: re.Match[str]) -> str:
+        token = match.group(0)
+        flags.setdefault("noise", []).append(token)
+        return ""
+
+    def _strip_bracket(match: re.Match[str]) -> str:
+        inner = match.group(0)[1:-1]
+        cleaned = NOISE_REGEX.sub(_log_noise, inner)
+        cleaned = cleaned.strip(" ,;:-")
+        if cleaned.lower() in STOPWORDS:
+            cleaned = ""
+        if cleaned:
+            return cleaned
+        flags.setdefault("parenthetical", []).append(match.group(0))
+        return ""
+
+    text = re.sub(r"\([^()]*\)|\[[^\[\]]*\]", _strip_bracket, text)
+    text = NOISE_REGEX.sub(_log_noise, text)
+    return text
+
+
+def parse_oligo_segments(text: str, flags: Dict[str, List[str]]) -> Tuple[str, Dict[str, object], Dict[str, object]]:
+    """Extract oligonucleotide sequences and modifications.
+
+    Parameters
+    ----------
+    text:
+        Raw text after Unicode and spacing normalization.
+    flags:
+        Global flags dictionary to populate with fluorophores/biotin markers
+        found within modification tags.
+
+    Returns
+    -------
+    cleaned_text, info, extra_flags
+        ``cleaned_text`` has modification tokens removed so subsequent stages
+        can operate on residual words. ``info`` captures parsed sequences and
+        modification metadata. ``extra_flags`` carries oligo-specific flag
+        entries to merge into the main ``flags`` mapping.
+    """
+
+    mods = {"five_prime": [], "three_prime": [], "internal": [], "backbone": "UNKNOWN"}
+    sequences: List[Dict[str, object]] = []
+    roles: List[str] = []
+    orig_lower = text.lower()
+
+    # Vendor-style modification tags /token/
+    for token in SLASH_MOD_PATTERN.findall(text):
+        lower = token.lower()
+        if lower.startswith("5"):
+            mod = token[1:]
+            mods["five_prime"].append(mod)
+            if "bio" in mod.lower():
+                flags.setdefault("biotin", []).append(mod)
+        elif lower.startswith("3"):
+            mod = token[1:]
+            mods["three_prime"].append(mod)
+            if "bio" in mod.lower():
+                flags.setdefault("biotin", []).append(mod)
+        else:
+            mods["internal"].append(token)
+        if PATTERNS["fluorophore"].search(token):
+            flags.setdefault("fluorophore", []).append(token)
+        text = text.replace(f"/{token}/", " ")
+
+    # Five-prime dash-style modifications e.g., 5'-FAM-
+    def _five_dash(match: re.Match[str]) -> str:
+        token = match.group(1)
+        mods["five_prime"].append(token)
+        if PATTERNS["fluorophore"].search(token):
+            flags.setdefault("fluorophore", []).append(token)
+        if token.lower().startswith("bio"):
+            flags.setdefault("biotin", []).append(token)
+        return ""
+
+    text = re.sub(r"5['\u2032]?-(\w+)-", _five_dash, text)
+
+    # Three-prime dash-style modifications e.g., -BHQ1-3'
+    def _three_dash(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if token:
+            mods["three_prime"].append(token)
+            if PATTERNS["fluorophore"].search(token):
+                flags.setdefault("fluorophore", []).append(token)
+            if token.lower().startswith("bio"):
+                flags.setdefault("biotin", []).append(token)
+        return ""
+
+    text = re.sub(r"-(\w+)-3['\u2032]?", _three_dash, text)
+    text = re.sub(r"5['\u2032]?|3['\u2032]?", "", text)
+
+    # Backbone PS indicated by '*' or PS tokens
+    if "*" in text or re.search(r"\bps\b", text, re.IGNORECASE):
+        mods["backbone"] = "PS"
+    else:
+        mods["backbone"] = "PO"
+
+    # Role-annotated sequences
+    for match in ROLE_PATTERN.finditer(text):
+        role = match.group(1).lower()
+        seq_raw = match.group(2)
+        seq = re.sub(r"[^ACGTURYKMSWBDHVN]", "", seq_raw).upper()
+        if len(seq) >= 8:
+            sequences.append({"role": role, "seq": seq, "length": len(seq)})
+            roles.append(role)
+        text = text.replace(match.group(0), " ")
+
+    # Remaining sequences without explicit roles
+    for seq_match in re.findall(r"[ACGTURYKMSWBDHVN*-]{8,}", text, re.IGNORECASE):
+        seq = re.sub(r"[^ACGTURYKMSWBDHVN]", "", seq_match).upper()
+        if len(seq) >= 8:
+            role = "sense" if not roles else f"seq{len(roles)+1}"
+            sequences.append({"role": role, "seq": seq, "length": len(seq)})
+            roles.append(role)
+        text = text.replace(seq_match, " ")
+
+    total_len = sum(s["length"] for s in sequences)
+    seq_concat = "".join(s["seq"] for s in sequences)
+    has_u = "U" in seq_concat
+    has_t = "T" in seq_concat
+    base_type = "RNA" if has_u and not has_t else "DNA" if has_t and not has_u else "UNKNOWN"
+
+    oligo_type = base_type
+    if re.search(r"sirna", orig_lower) or ("sense" in roles and "antisense" in roles):
+        oligo_type = "siRNA"
+    elif re.search(r"grna|sgrna|crrna|tracrrna", orig_lower):
+        oligo_type = "CRISPR"
+    elif re.search(r"aso|antisense", orig_lower) or mods["backbone"] == "PS":
+        oligo_type = "ASO"
+    elif re.search(r"pna", orig_lower):
+        oligo_type = "PNA"
+    elif re.search(r"lna", orig_lower):
+        oligo_type = "LNA"
+
+    subtype = "NONE"
+    if re.search(r"aptamer", orig_lower):
+        subtype = "aptamer"
+    elif re.search(r"primer", orig_lower):
+        subtype = "primer"
+    elif re.search(r"probe", orig_lower):
+        subtype = "probe"
+
+    info = {
+        "type": oligo_type,
+        "subtype": subtype,
+        "sequences": sequences,
+        "mods": mods,
+    }
+
+    extra_flags: Dict[str, object] = {
+        "oligo": 1,
+        "oligo_type": oligo_type,
+        "oligo_mods": mods["five_prime"] + mods["three_prime"] + mods["internal"],
+        "oligo_roles": roles,
+        "oligo_len_total": total_len,
+    }
+
+    return text, info, extra_flags
+
+
 def _cleanup(text: str) -> str:
     """Final whitespace and punctuation cleanup."""
 
     # Remove errant spaces around connectors that may appear after token removal
     text = _fix_spacing(text)
+    # Fix decimals such as ``1 . 5`` -> ``1.5``
+    text = re.sub(r"(?<=\d)\s*\.\s*(?=\d)", ".", text)
+    text = re.sub(r"\s*\.\s*", ".", text)
     # Collapse multiple whitespace characters to single spaces
     text = re.sub(r"\s+", " ", text)
     # Re-run spacing fix in case the previous collapse introduced new gaps
@@ -179,16 +493,36 @@ def _detect_peptide(text: str) -> Tuple[str, Dict[str, str]]:
     """Detect peptide-like strings and return category and info."""
 
     lowered = text.lower()
-    if re.search(r"poly(?:-|\()[a-z:,]+", lowered):
-        return "peptide", {"type": "polymer"}
+
+    # polymer-style notation: poly-Glu:Tyr, poly (Glu, Tyr), poly Glu Tyr
+    poly_match = re.search(
+        r"\bpoly\b(?:\s*\(\s*|\s+|-)([A-Za-z]{1,3}(?:[,:\s-]+[A-Za-z]{1,3})*)\)?",
+        text,
+    )
+    if poly_match:
+        comp_tokens = [t for t in re.split(r"[,:\s-]+", poly_match.group(1)) if t]
+        comp_clean = [t.lower() for t in comp_tokens]
+        if comp_clean and all(
+            t.upper() in AA1 or t[:1].upper() + t[1:].lower() in AA3
+            for t in comp_clean
+        ):
+            return "peptide", {
+                "type": "polymer",
+                "composition": ":".join(comp_clean),
+            }
+
     if re.search(r"\b(?:peptide|oligopeptide|polypeptide)\b", lowered):
         return "peptide", {"type": "aa_terms"}
 
-    tokens = re.split(r"[-:\s]+", text)
-    if len(tokens) >= 2:
-        if all(t.upper() in AA1 for t in tokens):
+    tokens = [t for t in re.split(r"[-:,\s]+", text) if t]
+    protect = {"H", "AC", "BOC", "OH", "NH2"}
+    tokens_clean = [t for t in tokens if t.upper() not in protect]
+    if len(tokens_clean) >= 2:
+        if all(t.upper() in AA1 for t in tokens_clean):
             return "peptide", {"type": "sequence_like"}
-        if all(t[:1].upper() + t[1:].lower() in AA3 for t in tokens if t):
+        if all(
+            t[:1].upper() + t[1:].lower() in AA3 for t in tokens_clean if t
+        ):
             return "peptide", {"type": "sequence_like"}
     return "small_molecule", {}
 
@@ -204,42 +538,82 @@ def normalize_name(name: str) -> Dict[str, object]:
     Returns
     -------
     dict
-        Dictionary with normalized fields.
+        Dictionary with normalized fields. By default ``search_name`` equals
+        ``normalized_name``; if they differ an explanatory string is stored in
+        ``search_override_reason``.
     """
 
     flags: Dict[str, List[str]] = {}
     text = _unicode_normalize(name)
     text = _fix_spacing(text)
-    base_clean = text  # for fallback
+    base_clean = text
 
+    oligo_info: Dict[str, object] = {}
+    if _has_oligo_signal(text):
+        text, oligo_info, extra = parse_oligo_segments(text, flags)
+        flags.update(extra)
+        category = "oligonucleotide"
+    else:
+        category = "small_molecule"
+
+    # Detect and remove common flagged tokens
+    text = _detect_and_remove(text, "fluorophore", flags)
     text = _remove_concentrations(text, flags)
-    # Strip salts before other markers to prevent them from being hidden
-    for key in ["salt", "isotope", "fluorophore", "biotin", "hydrate"]:
+    for key in ["salt", "isotope", "biotin", "hydrate"]:
         text = _detect_and_remove(text, key, flags)
-    text = _remove_parenthetical(text, flags)
-    text = _detect_and_remove(text, "noise", flags)
-
+    text = _remove_noise_descriptors(text, flags)
     text = _cleanup(text)
-    category, peptide_info = _detect_peptide(text)
 
-    if not text:
-        text = base_clean
+    peptide_info: Dict[str, object] = {}
+    if category != "oligonucleotide":
+        category, peptide_info = _detect_peptide(text)
 
-    normalized_name = text
-    search_name = _cleanup(text).lower()
+    status = ""
+    flag_empty_after_clean = False
+    if category != "oligonucleotide" and not text:
+        text = _cleanup(base_clean)
+        if not text:
+            text = _cleanup(_unicode_normalize(name))
+        status = "empty_after_clean"
+        flag_empty_after_clean = True
+        logger.warning("Name empty after cleaning; using fallback: %r", name)
+
+    if category == "oligonucleotide":
+        seqs = oligo_info.get("sequences", [])
+        length = seqs[0]["length"] if seqs else 0
+        typ = oligo_info.get("type", "unknown").lower()
+        if typ == "sirna":
+            normalized_name = f"sirna {length}mer sense/antisense"
+        elif typ == "crispr":
+            normalized_name = f"crispr grna {length}mer"
+        else:
+            normalized_name = f"{typ} {length}mer"
+        normalized_name = normalized_name.strip()
+        search_name = normalized_name
+    else:
+        normalized_name = _fix_spacing(text).lower()
+        search_name = normalized_name
+
     removed_tokens_flat = _flatten_flags(flags)
+    oligo_tokens_flat = _flatten_oligo_flags(flags)
 
     result = {
         "normalized_name": normalized_name,
         "search_name": search_name,
+        "search_override_reason": "",
         "category": category,
         "peptide_info": peptide_info,
+        "oligo_info": oligo_info,
         "flags": flags,
         "removed_tokens_flat": removed_tokens_flat,
+        "oligo_tokens_flat": oligo_tokens_flat,
+        "status": status,
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
         "flag_salt": bool(flags.get("salt")),
         "flag_hydrate": bool(flags.get("hydrate")),
+        "flag_oligo": bool(flags.get("oligo")),
+        "flag_empty_after_clean": flag_empty_after_clean,
     }
     return result
