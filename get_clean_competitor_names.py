@@ -7,8 +7,10 @@ import logging
 
 import pandas as pd
 
-from mylib import annotate_pubchem_info
-from pubchem_library import build_compound_name_dictionary
+
+from library import annotate_pubchem_info
+from library.pubchem_library import build_compound_name_dictionary
+
 
 
 # ---------------------------------------------------------------------------

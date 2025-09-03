@@ -51,6 +51,7 @@ def test_build_compound_name_dictionary_basic() -> None:
     assert set(result["preferent_name"]) == {"Aspirin", "Foo"}
 
 
+
 def test_synonyms_are_unique() -> None:
     """Duplicate synonym strings should appear only once."""
     df = pd.DataFrame(
@@ -71,3 +72,4 @@ def test_synonyms_are_unique() -> None:
 
     # Ensure that each synonym string appears only once across the dictionary
     assert not result["synonyms"].duplicated().any()
+
