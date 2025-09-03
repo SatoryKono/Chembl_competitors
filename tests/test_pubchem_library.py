@@ -49,3 +49,27 @@ def test_build_compound_name_dictionary_basic() -> None:
     foo_rows = result[result["preferent_name"] == "Foo"]
     assert foo_rows["synonyms"].tolist() == ["foo"]
     assert set(result["preferent_name"]) == {"Aspirin", "Foo"}
+
+
+
+def test_synonyms_are_unique() -> None:
+    """Duplicate synonym strings should appear only once."""
+    df = pd.DataFrame(
+        {
+            "search_name": ["A", "B"],
+            "pubchem_cid": ["1", "2"],
+            "canonical_smiles": ["", ""],
+            "inchi": ["", ""],
+            "inchi_key": ["AAAA-BBBB-N", "CCCC-DDDD-N"],
+            "molecular_formula": ["", ""],
+            "molecular_weight": ["", ""],
+            "iupac_name": ["A", "B"],
+            "synonyms": ["foo|shared", "bar|shared"],
+        }
+    )
+
+    result = build_compound_name_dictionary(df)
+
+    # Ensure that each synonym string appears only once across the dictionary
+    assert not result["synonyms"].duplicated().any()
+

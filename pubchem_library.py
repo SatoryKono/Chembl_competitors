@@ -311,5 +311,12 @@ def build_compound_name_dictionary(
             "reference_synonyms",
         ]
     ]
+    # Remove any accidental duplicate synonym rows that might have been
+    # produced during aggregation.  Only the first occurrence is kept to match
+    # the behaviour of the original Power Query script.
+    final_df = final_df.drop_duplicates(subset=["synonyms"]).reset_index(
+        drop=True
+    )
+
 
     return final_df
