@@ -12,9 +12,7 @@ logger = logging.getLogger(__name__)
 # Tokens representing salts and mineral acids to strip early in processing
 SALT_TOKENS = [
     "hydrochloride",
-    "phosphate",
     "mesylate",
-    "citrate",
     "tartrate",
     "acetate",
     "sulfate",
@@ -84,10 +82,10 @@ PATTERNS: Dict[str, re.Pattern[str]] = {
     "isotope": re.compile(
         r"""
         (
-            \[\s*\d{1,3}\s*[A-Z][a-z]?\s*\]                           # bracketed forms
-            |(?<![A-Za-z0-9])(?:3H|2H|D|T|13C|14C|15N|18F|125I)(?![A-Za-z0-9]) # bare prefixes
-            |\bd\d+\b                                                    # d-number deuteration
-            |\b(?:deuterated|tritiated|U-?13C)\b                          # words
+            \[\s*(?![13]\s*\])(?:[A-Za-z]+\s*)?\d{1,3}\s*(?:[A-Za-z]+(?:\d+\+)?\s*)?\]   # bracketed forms
+            |(?<![A-Za-z0-9])(?:3H|2H|D|T|13C|14C|15N|18F|125I)(?![A-Za-z0-9])                    # bare prefixes
+            |\bd\d+\b                                                                        # d-number deuteration
+            |\b(?:deuterated|tritiated|U-?13C)\b                                              # words
         )
         """,
         re.IGNORECASE | re.VERBOSE,
@@ -154,6 +152,52 @@ AA3 = {
     "Tyr",
 }
 
+# Regular expressions for generic descriptors lacking a defined structure
+STOP_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(?i)\bconjugated peptide\b"), "desc_labeled_generic"),
+    (re.compile(r"(?i)^\s*conjugated\s*$"), "desc_labeled_generic"),
+    (re.compile(r"(?i)\blabell?ed\b.*peptide"), "desc_labeled_generic"),
+    (re.compile(r"(?i)\blabeled ac-peptide\b"), "desc_labeled_generic"),
+    (re.compile(r"(?i)carboxyfluorescein[-\s]?labeled.*peptide"), "desc_labeled_generic"),
+    (
+        re.compile(
+            r"(?i)\b(labelled|labeled)\s*(acetylated|trifluoroacetylated)\s*peptide\b"
+        ),
+        "desc_labeled_generic",
+    ),
+    (
+        re.compile(r"(?i)\b(acetylated|trifluoroacetylated)\s*peptide\b"),
+        "desc_peptide_generic",
+    ),
+    (re.compile(r"(?i)\boligonucleosomes?\b"), "desc_chromatin_complex"),
+    (re.compile(r"(?i)\bpolypeptide substrate\b"), "desc_peptide_generic"),
+    (re.compile(r"(?i)\bpeptide substrate\b"), "desc_peptide_generic"),
+    (re.compile(r"(?i)\bradio[-\s]?labeled ligand\b"), "desc_ligand_generic"),
+    (re.compile(r"(?i)\bradiolabeled ligand\b"), "desc_ligand_generic"),
+    (re.compile(r"(?i)\bsmall molecule ligand\b"), "desc_ligand_generic"),
+    (re.compile(r"(?i)\bactivating peptide\b"), "desc_activation_bio"),
+]
+
+# Precompiled patterns for stereochemical descriptors
+STEREO_RACEMATE_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(?i)(?<!\w)\(\s*R\s*,\s*S\s*\)(?:\s*-\s*)?"), "racemic_RS"),
+    (re.compile(r"(?i)(?<!\w)\(\s*r\s*,\s*s\s*\)(?:\s*-\s*)?"), "racemic_RS"),
+    (re.compile(r"(?i)(?<!\w)\(\s*\+/\-\s*\)(?:\s*-\s*)?"), "racemic_pm"),
+    (re.compile(r"(?i)(?<!\w)\(/\)(?:\s*-\s*)?"), "racemic_unspecified"),
+]
+
+STEREO_OPTICAL_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(?i)(?<!\w)\(\s*\+\s*\)(?:\s*-\s*)?"), "optical_plus"),
+    (re.compile(r"(?i)(?<!\w)\(\s*-\s*\)(?:\s*-\s*)?"), "optical_minus"),
+]
+
+STEREO_SIMPLE_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(?i)(?<!\w)\(\s*R\s*\)(?:\s*-\s*)?"), "R"),
+    (re.compile(r"(?i)(?<!\w)\(\s*S\s*\)(?:\s*-\s*)?"), "S"),
+    (re.compile(r"(?i)(?<!\w)\(\s*r\s*\)(?:\s*-\s*)?"), "R"),
+    (re.compile(r"(?i)(?<!\w)\(\s*s\s*\)(?:\s*-\s*)?"), "S"),
+]
+
 # Keywords and patterns for oligonucleotide detection
 OLIGO_KEYWORDS = [
     "oligo",
@@ -192,6 +236,37 @@ ROLE_PATTERN = re.compile(
 SLASH_MOD_PATTERN = re.compile(r"/([^/]+)/")
 
 
+def _has_peptide_sequence(text: str) -> bool:
+    """Return True if text contains an explicit peptide sequence."""
+
+    tokens = [t for t in re.split(r"[-:,\s]+", text) if t]
+    consec = 0
+    for tok in tokens:
+        norm = tok[:1].upper() + tok[1:].lower()
+        if norm in AA3:
+            consec += 1
+            if consec >= 2:
+                return True
+        else:
+            consec = 0
+    seq_candidates = re.findall(rf"\b[{''.join(AA1)}]{{5,}}\b", text, re.IGNORECASE)
+    if any(tok.isupper() and tok.upper() not in {"PEPTIDE", "LIGAND", "SMALL", "MOLECULE", "CONJUGATED", "LABELED", "LABELLED", "ACTIVATING"} for tok in seq_candidates):
+        return True
+    return False
+
+
+def _detect_class_descriptor(text: str) -> Tuple[bool, str, List[str]]:
+    """Detect generic descriptor phrases that lack defined structure."""
+
+    if _has_peptide_sequence(text):
+        return False, "", []
+    for pattern, reason in STOP_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return True, reason, [match.group(0)]
+    return False, "", []
+
+
 def _has_oligo_signal(text: str) -> bool:
     """Return True if text contains oligonucleotide hints."""
 
@@ -218,6 +293,12 @@ def _flatten_oligo_flags(flags: Dict[str, object]) -> str:
     if "oligo_len_total" in flags:
         parts.append(f"oligo_len_total:{flags['oligo_len_total']}")
     return "|".join(parts)
+
+
+def _flatten_stereo_flags(flags: Dict[str, List[str]]) -> str:
+    """Join stereochemical tokens into a pipe-delimited string."""
+
+    return "|".join(flags.get("stereo", []))
 
 
 def _flatten_flags(flags: Dict[str, List[str]]) -> str:
@@ -310,12 +391,137 @@ def _remove_parenthetical(text: str, flags: Dict[str, List[str]]) -> str:
     return text
 
 
+def _canonicalize_isotopes(text: str, flags: Dict[str, List[str]]) -> str:
+    """Canonicalize radioactive isotope labels to ``[isotope]`` form.
+
+    Parameters
+    ----------
+    text:
+        Input text after spacing normalization.
+    flags:
+        Flag mapping to populate with `[1]` or `[3]` isotopic markers that
+        appear at the start of the name.
+
+    Returns
+    -------
+    str
+        Text with isotope notations normalized. Standalone numeric tags
+        ``[1]`` and ``[3]`` are removed and logged immediately as isotopes.
+    """
+
+    # Handle numeric-only tags at the start of the name
+    for digit in ("1", "3"):
+        if re.match(rf"^\s*\[\s*{digit}\s*\]", text, re.IGNORECASE):
+            flags.setdefault("isotope", []).append(digit)
+            text = re.sub(rf"^\s*\[\s*{digit}\s*\]\s*", "", text)
+
+    substitutions = [
+        (r"(?i)(?<!\[)\b35\s*s\b", "[35S]"),
+        (r"(?i)(?<!\[)\bs\s*35\b", "[35S]"),
+        (r"(?i)\[\s*35\s*s\s*\]", "[35S]"),
+        (r"(?i)\[\s*(?:γ|gamma)[-\s]*33\s*p\s*\]", "[gamma33P]"),
+        (r"(?i)(?<!\[)\b33\s*p\b", "[33P]"),
+        (r"(?i)(?<!\[)\bp\s*33\b", "[33P]"),
+        (r"(?i)\[\s*33\s*p\s*\]", "[33P]"),
+        (r"(?i)(?<!\[)\b11\s*c\b", "[11C]"),
+        (r"(?i)(?<!\[)\bc\s*11\b", "[11C]"),
+        (r"(?i)\[\s*11\s*c\s*\]", "[11C]"),
+        (r"(?i)(?<!\[)\b45\s*ca(?:2\+)?\b", "[45Ca2+]"),
+        (r"(?i)\[\s*45\s*ca(?:2\+)?\s*\]", "[45Ca2+]"),
+        (r"(?i)(?<!\[)\b14\s*c\b", "[14C]"),
+        (r"(?i)(?<!\[)\bc\s*14\b", "[14C]"),
+        (r"(?i)\[\s*14\s*c\s*\]", "[14C]"),
+    ]
+
+    for pattern, repl in substitutions:
+        text = re.sub(pattern, repl, text)
+
+    return text
+
+
+def _extract_stereo_labels(text: str, flags: Dict[str, List[str]]) -> str:
+    """Extract and remove simple stereochemical descriptors.
+
+    Parameters
+    ----------
+    text:
+        Input text after isotope canonicalization and removal.
+    flags:
+        Mapping to populate with detected stereochemical labels.
+
+    Returns
+    -------
+    str
+        Text with stereochemical descriptors stripped.
+    """
+
+    # 0) Normalize special symbols to canonical forms
+    s = re.sub(r"[\u2013\u2014\u2212]", "-", text)
+    s = re.sub(r"\+/?-|\+/?−", "+/-", s)
+    s = re.sub(r"±", "+/-", s)
+
+    stereo_hits: List[str] = []
+
+    # 1) Racemates
+    for pat, label in STEREO_RACEMATE_PATTERNS:
+        if pat.search(s):
+            stereo_hits.append(label)
+            s = pat.sub(" ", s)
+
+    # 2) Optical rotation signs
+    for pat, label in STEREO_OPTICAL_PATTERNS:
+        if pat.search(s):
+            stereo_hits.append(label)
+            s = pat.sub(" ", s)
+
+    # 3) Simple R/S descriptors
+    for pat, label in STEREO_SIMPLE_PATTERNS:
+        if pat.search(s):
+            stereo_hits.append(label)
+            s = pat.sub(" ", s)
+
+    # 4) Cleanup stray brackets, hyphens, and spaces
+    s = re.sub(r"\s*-\s*", "-", s)
+    s = re.sub(r"\s+([)\]\}])", r"\1", s)
+    s = re.sub(r"([([\{])\s+", r"\1", s)
+    s = re.sub(r"\(\s*\)", " ", s)
+    s = re.sub(r"\[\s*\]", " ", s)
+    s = re.sub(r"\s{2,}", " ", s).strip()
+
+    if stereo_hits:
+        flags.setdefault("stereo", []).extend(stereo_hits)
+
+    return s
+
+
 def _detect_and_remove(text: str, key: str, flags: Dict[str, List[str]]) -> str:
     pattern = PATTERNS[key]
     matches = pattern.findall(text)
     if matches:
-        flags.setdefault(key, []).extend(matches if isinstance(matches, list) else [matches])
+        if not isinstance(matches, list):
+            matches = [matches]
+        norm_matches: List[str] = []
+        for m in matches:
+            token = m
+            if key == "isotope":
+                clean = re.sub(r"[\[\]\s]", "", token)
+                lower = clean.lower()
+                if re.match(r"d\d+", lower) or lower in {"deuterated", "tritiated"}:
+                    token = lower
+                elif lower.startswith("u13c") or lower.startswith("u-13c"):
+                    token = "U-13C"
+                else:
+                    token = clean
+            elif key == "fluorophore":
+                token = token.strip()
+                if token.isalpha():
+                    token = token.upper()
+            norm_matches.append(token)
+        flags.setdefault(key, []).extend(norm_matches)
         text = pattern.sub(" ", text)
+        if key == "isotope":
+            text = re.sub(r"\[\s*\]", " ", text)
+            text = text.replace("[[", "[").replace("]]", "]")
     return text
 
 
@@ -558,7 +764,40 @@ def normalize_name(name: str) -> Dict[str, object]:
     flags: Dict[str, List[str]] = {}
     text = _unicode_normalize(name)
     text = _fix_spacing(text)
+    text = _canonicalize_isotopes(text, flags)
+    text = _detect_and_remove(text, "isotope", flags)
+    text = _extract_stereo_labels(text, flags)
     base_clean = text
+
+    is_desc, reason, desc_terms = _detect_class_descriptor(text)
+    if is_desc:
+        flags["descriptor_terms"] = [t.lower() for t in desc_terms]
+        normalized = _fix_spacing(text).lower()
+        removed_tokens_flat = _flatten_flags(flags)
+        oligo_tokens_flat = _flatten_oligo_flags(flags)
+        stereo_tokens_flat = _flatten_stereo_flags(flags)
+        return {
+            "normalized_name": normalized,
+            "search_name": normalized,
+            "search_override_reason": "",
+            "category": "class_descriptor",
+            "peptide_info": {},
+            "oligo_info": {},
+            "flags": flags,
+            "removed_tokens_flat": removed_tokens_flat,
+            "oligo_tokens_flat": oligo_tokens_flat,
+            "stereo_tokens_flat": stereo_tokens_flat,
+            "status": "no_structure",
+            "non_compound_reason": reason,
+            "flag_isotope": False,
+            "flag_fluorophore": False,
+            "flag_biotin": False,
+            "flag_salt": False,
+            "flag_hydrate": False,
+            "flag_oligo": False,
+            "flag_empty_after_clean": False,
+            "flag_stereo": bool(flags.get("stereo")),
+        }
 
     oligo_info: Dict[str, object] = {}
     if _has_oligo_signal(text):
@@ -571,7 +810,7 @@ def normalize_name(name: str) -> Dict[str, object]:
     # Detect and remove common flagged tokens
     text = _detect_and_remove(text, "fluorophore", flags)
     text = _remove_concentrations(text, flags)
-    for key in ["salt", "isotope", "biotin", "hydrate"]:
+    for key in ["salt", "biotin", "hydrate"]:
         text = _detect_and_remove(text, key, flags)
     text = _remove_noise_descriptors(text, flags)
     text = _cleanup(text)
@@ -608,6 +847,7 @@ def normalize_name(name: str) -> Dict[str, object]:
 
     removed_tokens_flat = _flatten_flags(flags)
     oligo_tokens_flat = _flatten_oligo_flags(flags)
+    stereo_tokens_flat = _flatten_stereo_flags(flags)
 
     result = {
         "normalized_name": normalized_name,
@@ -620,6 +860,7 @@ def normalize_name(name: str) -> Dict[str, object]:
         "removed_tokens_flat": removed_tokens_flat,
         "oligo_tokens_flat": oligo_tokens_flat,
         "status": status,
+        "non_compound_reason": "",
         "flag_isotope": bool(flags.get("isotope")),
         "flag_fluorophore": bool(flags.get("fluorophore")),
         "flag_biotin": bool(flags.get("biotin")),
@@ -627,5 +868,6 @@ def normalize_name(name: str) -> Dict[str, object]:
         "flag_hydrate": bool(flags.get("hydrate")),
         "flag_oligo": bool(flags.get("oligo")),
         "flag_empty_after_clean": flag_empty_after_clean,
+        "flag_stereo": bool(flags.get("stereo")),
     }
     return result

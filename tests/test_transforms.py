@@ -156,7 +156,7 @@ def test_removed_tokens_flat() -> None:
     res = normalize_name(text)
     assert (
         res["removed_tokens_flat"]
-        == "fluorophore:Alexa Fluor 488|isotope:[3H]|salt:hydrochloride"
+        == "fluorophore:Alexa Fluor 488|isotope:3H|salt:hydrochloride"
     )
 
 
@@ -181,26 +181,26 @@ def test_search_name_defaults_to_normalized() -> None:
 @pytest.mark.parametrize(
     "text, expected, tokens",
     [
-        ("[3H]-histamine", "histamine", ["[3H]"]),
+        ("[3H]-histamine", "histamine", ["3H"]),
         ("d5-amphetamine", "amphetamine", ["d5"]),
         ("U-13C glucose", "glucose", ["U-13C"]),
-        ("d5 [3H] amphetamine", "amphetamine", ["d5", "[3H]"]),
+        ("d5 [3H] amphetamine", "amphetamine", ["d5", "3H"]),
         ("14C caffeine", "caffeine", ["14C"]),
-        ("[14C]caffeine", "caffeine", ["[14C]"]),
+        ("[14C]caffeine", "caffeine", ["14C"]),
         ("125I-insulin", "insulin", ["125I"]),
-        ("[125 I] insulin", "insulin", ["[125 I]"]),
+        ("[125 I] insulin", "insulin", ["125I"]),
         ("18F-FDG", "fdg", ["18F"]),
-        ("[18F]fluorodeoxyglucose", "fluorodeoxyglucose", ["[18F]"]),
+        ("[18F]fluorodeoxyglucose", "fluorodeoxyglucose", ["18F"]),
         ("2H water", "water", ["2H"]),
         ("D-amphetamine", "amphetamine", ["D"]),
         ("T-thymidine", "thymidine", ["T"]),
         ("deuterated ethanol", "ethanol", ["deuterated"]),
         ("tritiated thymidine", "thymidine", ["tritiated"]),
         ("d3-deuterated phenol", "phenol", ["d3", "deuterated"]),
-        ("[3H][14C] compound", "compound", ["[3H]", "[14C]"]),
+        ("[3H][14C] compound", "compound", ["3H", "14C"]),
         ("d5-125I-amphetamine", "amphetamine", ["d5", "125I"]),
-        ("U13C-15N-lysine", "lysine", ["U13C", "15N"]),
-        ("d5 U-13C [3H] sample", "sample", ["d5", "U-13C", "[3H]"]),
+        ("U13C-15N-lysine", "lysine", ["U-13C", "15N"]),
+        ("d5 U-13C [3H] sample", "sample", ["d5", "U-13C", "3H"]),
     ],
 )
 def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
@@ -211,6 +211,28 @@ def test_isotope_variants(text: str, expected: str, tokens: list[str]) -> None:
     assert res["flags"].get("isotope") == tokens
     # Ensure no isotopic labels remain after normalization
     assert PATTERNS["isotope"].findall(res["search_name"]) == []
+
+
+@pytest.mark.parametrize(
+    "text, expected, token",
+    [
+        ("[35s]-methionine", "methionine", ["35S"]),
+        ("[gamma33p]-ATP", "atp", ["gamma33P"]),
+        ("[33p]GTP", "gtp", ["33P"]),
+        ("[11c]glucose", "glucose", ["11C"]),
+        ("[45ca2+] channel", "channel", ["45Ca2+"]),
+        ("[14c] citrate", "citrate", ["14C"]),
+        ("[1] peptide", "peptide", ["1"]),
+        ("[3] peptide", "peptide", ["3"]),
+        ("glucose-1-phosphate", "glucose-1-phosphate", []),
+    ],
+)
+def test_new_isotope_canonicalization(text: str, expected: str, token: list[str]) -> None:
+    """New isotope forms are canonicalized, logged and removed."""
+
+    res = normalize_name(text)
+    assert res["search_name"] == expected
+    assert res["flags"].get("isotope", []) == token
 
 
 @pytest.mark.parametrize(
@@ -295,3 +317,55 @@ def test_vendor_tags_phos_bio() -> None:
     assert mods["three_prime"] == ["Bio"]
     assert res["flags"].get("biotin") == ["Bio"]
     assert res["normalized_name"] == "dna 12mer"
+
+
+@pytest.mark.parametrize(
+    "text, reason",
+    [
+        ("conjugated peptide", "desc_labeled_generic"),
+        ("labeled peptide substrate", "desc_labeled_generic"),
+        ("labeled ac-peptide", "desc_labeled_generic"),
+        ("carboxyfluorescein-labeled acetylated peptide", "desc_labeled_generic"),
+        ("labelled peptide", "desc_labeled_generic"),
+        ("labelled acetylated peptide", "desc_labeled_generic"),
+        ("oligonucleosomes", "desc_chromatin_complex"),
+        ("polypeptide substrate", "desc_peptide_generic"),
+        ("radiolabeled ligand", "desc_ligand_generic"),
+        ("small molecule ligand", "desc_ligand_generic"),
+        ("activating peptide", "desc_activation_bio"),
+    ],
+)
+def test_class_descriptor_detection(text: str, reason: str) -> None:
+    res = normalize_name(text)
+    assert res["category"] == "class_descriptor"
+    assert res["status"] == "no_structure"
+    assert res["non_compound_reason"] == reason
+    assert res["flags"].get("descriptor_terms")
+
+
+def test_descriptor_sequence_whitelist() -> None:
+    res = normalize_name("H-Gly-Lys-Arg-OH peptide")
+    assert res["category"] == "peptide"
+
+
+@pytest.mark.parametrize(
+    "text, expected, labels",
+    [
+        ("(R)-ibuprofen", "ibuprofen", ["R"]),
+        ("(s) mandelic acid", "mandelic acid", ["S"]),
+        ("(+)-lactic acid", "lactic acid", ["optical_plus"]),
+        ("(-) camphor", "camphor", ["optical_minus"]),
+        ("(±)-propranolol", "propranolol", ["racemic_pm"]),
+        ("(+/-)-metoprolol", "metoprolol", ["racemic_pm"]),
+        ("(R,S)-something", "something", ["racemic_RS"]),
+        ("(r, s) alaninol", "alaninol", ["racemic_RS"]),
+        ("(/)-ketamine", "ketamine", ["racemic_unspecified"]),
+        ("histamine", "histamine", []),
+    ],
+)
+def test_stereo_descriptor_extraction(
+    text: str, expected: str, labels: list[str]
+) -> None:
+    res = normalize_name(text)
+    assert res["normalized_name"] == expected
+    assert res["flags"].get("stereo", []) == labels
